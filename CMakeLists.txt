@@ -84,6 +84,7 @@ set(SHADER_DIR ${CMAKE_SOURCE_DIR}/shaders)
 set(BGFX_SHADER_INCLUDE_PATH ${SHADER_DIR}/include)
 file(GLOB_RECURSE SHADER_FILES_VS ${SHADER_DIR}/vs_*.sc)
 file(GLOB_RECURSE SHADER_FILES_FS ${SHADER_DIR}/fs_*.sc)
+file(GLOB_RECURSE SHADER_FILES_CS ${SHADER_DIR}/cs_*.sc)
 bgfx_compile_shaders(
     TYPE VERTEX
     SHADERS ${SHADER_FILES_VS}
@@ -94,6 +95,13 @@ bgfx_compile_shaders(
 bgfx_compile_shaders(
     TYPE FRAGMENT
     SHADERS ${SHADER_FILES_FS}
+    VARYING_DEF ${SHADER_DIR}/varying.def.sc
+    OUTPUT_DIR ${SHADER_DIR}/include/generated
+    AS_HEADERS
+)
+bgfx_compile_shaders(
+    TYPE COMPUTE
+    SHADERS ${SHADER_FILES_CS}
     VARYING_DEF ${SHADER_DIR}/varying.def.sc
     OUTPUT_DIR ${SHADER_DIR}/include/generated
     AS_HEADERS
@@ -130,7 +138,7 @@ target_include_directories(imgui PUBLIC
 # Sources
 # -------------------------------------------------------------------
 file(GLOB_RECURSE SRC_FILES ${CMAKE_SOURCE_DIR}/src/*.cpp)
-add_executable(nuum ${SRC_FILES} ${SHADER_FILES_VS} ${SHADER_FILES_FS})
+add_executable(nuum ${SRC_FILES} ${SHADER_FILES_VS} ${SHADER_FILES_FS} ${SHADER_FILES_CS})
 
 # -------------------------------------------------------------------
 # Includes

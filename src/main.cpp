@@ -3,12 +3,40 @@
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
 #include <bx/bx.h>
+#include <bx/math.h>
+#include <glm/glm.hpp>
 
 #include <backends/imgui_impl_sdl2.h>
+#include "bgfx/defines.h"
 #include "imgui_impl_bgfx.h"
 
 #include <imgui.h>
 #include <iostream>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#include "spirv/fs_screen.sc.bin.h"
+#include "spirv/vs_screen.sc.bin.h"
+#include "spirv/cs_ray.sc.bin.h"
+
+struct ScreenVertex {
+    glm::vec3 pos;
+    glm::vec2 texCoord;
+
+    inline bool operator==(const ScreenVertex& other) const {
+        return pos == other.pos && texCoord == other.texCoord;
+    }
+};
+
+static const ScreenVertex screenVertices[] = {
+    {{-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},  //
+    {{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},   //
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}}, //
+    {{1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}}};
+
+static const uint16_t screenIndices[] = {0, 1, 2, //
+                                         2, 1, 3};
 
 static void init_bgfx(SDL_Window* window) {
     SDL_SysWMinfo wmInfo;
@@ -55,6 +83,22 @@ static void init_bgfx(SDL_Window* window) {
     bgfx::setDebug(BGFX_DEBUG_TEXT | BGFX_DEBUG_PROFILER);
 }
 
+// Load a texture from file
+bgfx::TextureHandle load_texture(const char* filename) {
+    int width, height, channels;
+    unsigned char* data = stbi_load(filename, &width, &height, &channels, 4);
+    if (!data) {
+        std::cerr << "Failed to load texture: " << filename << std::endl;
+        return BGFX_INVALID_HANDLE;
+    }
+
+    bgfx::TextureHandle texture = bgfx::createTexture2D(
+        uint16_t(width), uint16_t(height), false, 1, bgfx::TextureFormat::RGBA8,
+        0, bgfx::copy(data, width * height * 4));
+    stbi_image_free(data);
+    return texture;
+}
+
 int main(int argc, char** argv) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
@@ -72,14 +116,66 @@ int main(int argc, char** argv) {
     ImGuiIO& io = ImGui::GetIO();
     (void)io;
     ImGui::StyleColorsDark();
-    io.Fonts->AddFontFromFileTTF("assets/fonts/ttf/JetBrainsMono-Regular.ttf", 16.0f);
+    io.Fonts->AddFontFromFileTTF("assets/fonts/ttf/JetBrainsMono-Regular.ttf",
+                                 16.0f);
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
 
     ImGui_ImplSDL2_InitForOther(window);
     ImGui_Implbgfx_Init(250);
 
+    bgfx::TextureHandle texture = load_texture("assets/brick.jpg");
+    bgfx::UniformHandle u_texture =
+        bgfx::createUniform("u_texture", bgfx::UniformType::Sampler);
+
+    bgfx::VertexLayout screenVertexLayout;
+    screenVertexLayout.begin()
+        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .end();
+    bgfx::VertexBufferHandle vbh = bgfx::createVertexBuffer(
+        bgfx::makeRef(screenVertices, sizeof(screenVertices)),
+        screenVertexLayout);
+    bgfx::IndexBufferHandle ibh = bgfx::createIndexBuffer(
+        bgfx::makeRef(screenIndices, sizeof(screenIndices)));
+
+    bgfx::ProgramHandle program = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(vs_screen_spv, sizeof(vs_screen_spv))),
+        bgfx::createShader(bgfx::makeRef(fs_screen_spv, sizeof(fs_screen_spv))),
+        true);
+
+    // voxel data for 3D texture
+    uint8_t voxelData[16 * 16 * 16 * 4];
+    for (int z = 0; z < 16; ++z) {
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                int index = (z * 16 * 16 + y * 16 + x) * 4;
+                voxelData[index] = x * 16 + y;     // R
+                voxelData[index + 1] = y * 16 + z; // G
+                voxelData[index + 2] = z * 16 + x; // B
+                voxelData[index + 3] = 255;        // A
+            }
+        }
+    }
+
+    bgfx::TextureHandle voxelTexture =
+        bgfx::createTexture3D(16, 16, 16, false, bgfx::TextureFormat::RGBA8, 0,
+                              bgfx::copy(voxelData, sizeof(voxelData)));
+    bgfx::UniformHandle u_voxelTexture =
+        bgfx::createUniform("u_voxelTexture", bgfx::UniformType::Sampler);
+
+    bgfx::TextureHandle outputTexture =
+        bgfx::createTexture2D(1280, 720, false, 1, bgfx::TextureFormat::RGBA32F,
+                              BGFX_TEXTURE_COMPUTE_WRITE);
+
     int width = 1280, height = 720;
+    const bgfx::Caps* caps = bgfx::getCaps();
+
+    bgfx::ProgramHandle computeProgram = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(cs_ray_spv, sizeof(cs_ray_spv))),
+        true);
+
+    bgfx::UniformHandle u_camPos =
+        bgfx::createUniform("u_camPos", bgfx::UniformType::Vec4);
 
     bool running = true;
     SDL_Event event;
@@ -100,15 +196,23 @@ int main(int argc, char** argv) {
                                       uint16_t(event.window.data2));
                     width = event.window.data1;
                     height = event.window.data2;
+                    bgfx::destroy(outputTexture);
+                    outputTexture = bgfx::createTexture2D(
+                        uint16_t(width), uint16_t(height), false, 1,
+                        bgfx::TextureFormat::RGBA32F,
+                        BGFX_TEXTURE_COMPUTE_WRITE);
                 }
             }
         }
 
+        bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
+        bgfx::setTexture(1, u_voxelTexture, voxelTexture);
+        bgfx::setUniform(u_camPos, &glm::vec4(4.0f, 0.0f, 0.0f, 1.0f)[0]);
+        bgfx::dispatch(1, computeProgram, (width + 7) / 8, (height + 7) / 8, 1);
+
         ImGui_ImplSDL2_NewFrame();
         ImGui_Implbgfx_NewFrame();
         ImGui::NewFrame();
-
-        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport()->ID);
 
         ImGui::Begin("Nuum");
         ImGui::Text("Hello from ImGui inside Nuum!");
@@ -116,16 +220,43 @@ int main(int argc, char** argv) {
 
         ImGui::Render();
 
-        bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x202020ff,
+        bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00ff00ff,
                            1.0f, 0);
-        bgfx::setViewRect(0, 0, 0, uint16_t(width), uint16_t(height));
+        bgfx::setViewRect(0, 0, 0, width, height);
         bgfx::touch(0); // make sure view is cleared even if no draw calls
-        
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
+
+        bgfx::touch(0);
+        bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
+        bgfx::setViewClear(0, BGFX_CLEAR_COLOR, 0xff0000ff, 1.0f, 0);
+        bgfx::setTexture(0, u_texture, outputTexture);
+        bgfx::setVertexBuffer(0, vbh);
+        bgfx::setIndexBuffer(ibh);
+        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+                       BGFX_STATE_MSAA |
+                       BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                             BGFX_STATE_BLEND_INV_SRC_ALPHA));
+        float identity[16];
+        bx::mtxIdentity(identity);
+        bgfx::setViewTransform(0, identity, identity);
+        bgfx::submit(0, program);
+
+        bgfx::dbgTextClear();
+        bgfx::dbgTextPrintf(2, 2, 0x4f, "Nuum");
 
         bgfx::frame();
     }
 
+    bgfx::destroy(program);
+    bgfx::destroy(ibh);
+    bgfx::destroy(vbh);
+    bgfx::destroy(u_texture);
+    bgfx::destroy(texture);
+    bgfx::destroy(u_voxelTexture);
+    bgfx::destroy(voxelTexture);
+    bgfx::destroy(u_camPos);
+    bgfx::destroy(computeProgram);
+    bgfx::destroy(outputTexture);
     ImGui_ImplSDL2_Shutdown();
     ImGui_Implbgfx_Shutdown();
     ImGui::DestroyContext();
