@@ -157,11 +157,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    bgfx::TextureHandle voxelTexture =
-        bgfx::createTexture3D(16, 16, 16, false, bgfx::TextureFormat::RGBA8, 0,
-                              bgfx::copy(voxelData, sizeof(voxelData)));
-    bgfx::UniformHandle u_voxelTexture =
-        bgfx::createUniform("u_voxelTexture", bgfx::UniformType::Sampler);
+    bgfx::TextureHandle voxelTexture = bgfx::createTexture3D(
+        16, 16, 16, false, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_RT,
+        bgfx::copy(voxelData, sizeof(voxelData)));
+    bgfx::UniformHandle s_voxelTexture =
+        bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
 
     bgfx::TextureHandle outputTexture =
         bgfx::createTexture2D(1280, 720, false, 1, bgfx::TextureFormat::RGBA32F,
@@ -169,6 +169,10 @@ int main(int argc, char** argv) {
 
     int width = 1280, height = 720;
     const bgfx::Caps* caps = bgfx::getCaps();
+    std::cout << "Renderer: " << bgfx::getRendererName(caps->rendererType)
+              << std::endl;
+    std::cout << "Homogeneous Depth: "
+              << (caps->homogeneousDepth ? "true" : "false") << std::endl;
 
     bgfx::ProgramHandle computeProgram = bgfx::createProgram(
         bgfx::createShader(bgfx::makeRef(cs_ray_spv, sizeof(cs_ray_spv))),
@@ -176,6 +180,14 @@ int main(int argc, char** argv) {
 
     bgfx::UniformHandle u_camPos =
         bgfx::createUniform("u_camPos", bgfx::UniformType::Vec4);
+    float camPos[4] = {5.0f, 0.0f, 0.0f, 1.0f};
+    bgfx::UniformHandle u_viewInv =
+        bgfx::createUniform("u_viewInv", bgfx::UniformType::Mat4);
+    bgfx::UniformHandle u_projInv =
+        bgfx::createUniform("u_projInv", bgfx::UniformType::Mat4);
+    bgfx::UniformHandle u_gridSize =
+        bgfx::createUniform("u_gridSize", bgfx::UniformType::Vec4);
+    float gridSize[4] = {16.0f, 16.0f, 16.0f, 1.0f};
 
     bool running = true;
     SDL_Event event;
@@ -205,30 +217,46 @@ int main(int argc, char** argv) {
             }
         }
 
-        bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
-        bgfx::setTexture(1, u_voxelTexture, voxelTexture);
-        bgfx::setUniform(u_camPos, &glm::vec4(4.0f, 0.0f, 0.0f, 1.0f)[0]);
-        bgfx::dispatch(1, computeProgram, (width + 7) / 8, (height + 7) / 8, 1);
-
         ImGui_ImplSDL2_NewFrame();
         ImGui_Implbgfx_NewFrame();
         ImGui::NewFrame();
 
         ImGui::Begin("Nuum");
         ImGui::Text("Hello from ImGui inside Nuum!");
+        ImGui::SliderFloat3("CamPos", &camPos[0], -10.0f, 10.0f);
+        ImGui::InputFloat3("Grid Size", &gridSize[0]);
+        ImGui::SliderFloat("Voxel Size", &gridSize[3], 0.1f, 10.0f);
         ImGui::End();
 
         ImGui::Render();
-
-        bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00ff00ff,
-                           1.0f, 0);
-        bgfx::setViewRect(0, 0, 0, width, height);
-        bgfx::touch(0); // make sure view is cleared even if no draw calls
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
-
         bgfx::touch(0);
-        bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
-        bgfx::setViewClear(0, BGFX_CLEAR_COLOR, 0xff0000ff, 1.0f, 0);
+
+        float projection[16];
+        float view[16];
+        bx::Vec3 camPosVec(camPos[0], camPos[1], camPos[2]);
+        bx::mtxLookAt(view, camPosVec, bx::Vec3(0.0f, 0.0f, 0.0f));
+        float aspect = float(width) / float(height);
+        bx::mtxProj(projection, 50.0f, aspect, 1.0f, 100.0f,
+                    caps->homogeneousDepth);
+        float viewInv[16];
+        bx::mtxInverse(viewInv, view);
+        bgfx::setUniform(u_viewInv, &viewInv, 1);
+        float projInv[16];
+        bx::mtxInverse(projInv, projection);
+        bgfx::setUniform(u_projInv, &projInv, 1);
+        bgfx::setUniform(u_gridSize, &gridSize);
+        bgfx::setUniform(u_camPos, &camPos);
+        bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
+        bgfx::setTexture(1, s_voxelTexture, voxelTexture);
+        bgfx::dispatch(0, computeProgram, width, height, 1);
+
+        bgfx::touch(1);
+        bgfx::setViewClear(1, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00ff00ff,
+                           1.0f, 0);
+        bgfx::setViewRect(1, 0, 0, width, height);
+        bgfx::setViewFrameBuffer(1, BGFX_INVALID_HANDLE);
+        bgfx::setViewClear(1, BGFX_CLEAR_COLOR, 0xff0000ff, 1.0f, 0);
         bgfx::setTexture(0, u_texture, outputTexture);
         bgfx::setVertexBuffer(0, vbh);
         bgfx::setIndexBuffer(ibh);
@@ -239,10 +267,10 @@ int main(int argc, char** argv) {
         float identity[16];
         bx::mtxIdentity(identity);
         bgfx::setViewTransform(0, identity, identity);
-        bgfx::submit(0, program);
+        bgfx::submit(1, program);
 
         bgfx::dbgTextClear();
-        bgfx::dbgTextPrintf(2, 2, 0x4f, "Nuum");
+        bgfx::dbgTextPrintf(2, 2, 0xf0, "Nuum");
 
         bgfx::frame();
     }
@@ -252,9 +280,12 @@ int main(int argc, char** argv) {
     bgfx::destroy(vbh);
     bgfx::destroy(u_texture);
     bgfx::destroy(texture);
-    bgfx::destroy(u_voxelTexture);
+    bgfx::destroy(s_voxelTexture);
     bgfx::destroy(voxelTexture);
     bgfx::destroy(u_camPos);
+    bgfx::destroy(u_viewInv);
+    bgfx::destroy(u_projInv);
+    bgfx::destroy(u_gridSize);
     bgfx::destroy(computeProgram);
     bgfx::destroy(outputTexture);
     ImGui_ImplSDL2_Shutdown();
