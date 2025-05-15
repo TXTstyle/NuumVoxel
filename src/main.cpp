@@ -1,4 +1,5 @@
 #include <SDL.h>
+#include <SDL_events.h>
 #include <SDL_syswm.h>
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
@@ -19,6 +20,18 @@
 #include "spirv/fs_screen.sc.bin.h"
 #include "spirv/vs_screen.sc.bin.h"
 #include "spirv/cs_ray.sc.bin.h"
+
+#if BX_PLATFORM_OSX
+#include "metal/vs_screen.sc.bin.h"
+#include "metal/fs_screen.sc.bin.h"
+#include "metal/cs_ray.sc.bin.h"
+#endif
+
+#if BX_PLATFORM_WINDOWS
+#include "dx11/vs_screen.sc.bin.h"
+#include "dx11/fs_screen.sc.bin.h"
+#include "dx11/cs_ray.sc.bin.h"
+#endif
 
 struct ScreenVertex {
     glm::vec3 pos;
@@ -123,7 +136,6 @@ int main(int argc, char** argv) {
     ImGui_ImplSDL2_InitForOther(window);
     ImGui_Implbgfx_Init(250);
 
-    bgfx::TextureHandle texture = load_texture("assets/brick.jpg");
     bgfx::UniformHandle u_texture =
         bgfx::createUniform("u_texture", bgfx::UniformType::Sampler);
 
@@ -138,10 +150,26 @@ int main(int argc, char** argv) {
     bgfx::IndexBufferHandle ibh = bgfx::createIndexBuffer(
         bgfx::makeRef(screenIndices, sizeof(screenIndices)));
 
+#if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
     bgfx::ProgramHandle program = bgfx::createProgram(
         bgfx::createShader(bgfx::makeRef(vs_screen_spv, sizeof(vs_screen_spv))),
         bgfx::createShader(bgfx::makeRef(fs_screen_spv, sizeof(fs_screen_spv))),
         true);
+#elif BX_PLATFORM_WINDOWS
+    bgfx::ProgramHandle program = bgfx::createProgram(
+        bgfx::createShader(
+            bgfx::makeRef(vs_screen_dx11_spv, sizeof(vs_screen_dx11_spv))),
+        bgfx::createShader(
+            bgfx::makeRef(fs_screen_dx11_spv, sizeof(fs_screen_dx11_spv))),
+        true);
+#elif BX_PLATFORM_OSX
+    bgfx::ProgramHandle program = bgfx::createProgram(
+        bgfx::createShader(
+            bgfx::makeRef(vs_screen_mtl_spv, sizeof(vs_screen_mtl_spv))),
+        bgfx::createShader(
+            bgfx::makeRef(fs_screen_metal_spv, sizeof(fs_screen_mtl_spv))),
+        true);
+#endif
 
     // voxel data for 3D texture
     uint8_t voxelData[16 * 16 * 16 * 4];
@@ -180,14 +208,14 @@ int main(int argc, char** argv) {
 
     bgfx::UniformHandle u_camPos =
         bgfx::createUniform("u_camPos", bgfx::UniformType::Vec4);
-    float camPos[4] = {5.0f, 0.0f, 0.0f, 1.0f};
-    bgfx::UniformHandle u_viewInv =
-        bgfx::createUniform("u_viewInv", bgfx::UniformType::Mat4);
-    bgfx::UniformHandle u_projInv =
-        bgfx::createUniform("u_projInv", bgfx::UniformType::Mat4);
+    glm::vec3 camPos = {3.0f, 3.0f, 0.0f};
+    bgfx::UniformHandle u_camMat =
+        bgfx::createUniform("u_camMat", bgfx::UniformType::Mat3);
     bgfx::UniformHandle u_gridSize =
         bgfx::createUniform("u_gridSize", bgfx::UniformType::Vec4);
-    float gridSize[4] = {16.0f, 16.0f, 16.0f, 1.0f};
+    glm::vec4 gridSize = {16.0f, 16.0f, 16.0f, 1.0f};
+    float radius = 5.0f;
+    glm::vec2 rotation = {0.0f, 0.0f};
 
     bool running = true;
     SDL_Event event;
@@ -212,7 +240,23 @@ int main(int argc, char** argv) {
                     outputTexture = bgfx::createTexture2D(
                         uint16_t(width), uint16_t(height), false, 1,
                         bgfx::TextureFormat::RGBA32F,
-                        BGFX_TEXTURE_COMPUTE_WRITE);
+                        BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
+                }
+            }
+            if (event.type == SDL_MOUSEMOTION) {
+                if (event.motion.state & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+                    rotation.x += event.motion.yrel * 0.01f;
+                    rotation.y += event.motion.xrel * -0.01f;
+                    if (rotation.x > 1.57f) {
+                        rotation.x = 1.57f;
+                    } else if (rotation.x < -1.57f) {
+                        rotation.x = -1.57f;
+                    }
+                    if (rotation.y > 2 * 3.14f) {
+                        rotation.y = 0;
+                    } else if (rotation.y < -2 * 3.14f) {
+                        rotation.y = 0;
+                    }
                 }
             }
         }
@@ -222,8 +266,8 @@ int main(int argc, char** argv) {
         ImGui::NewFrame();
 
         ImGui::Begin("Nuum");
-        ImGui::Text("Hello from ImGui inside Nuum!");
-        ImGui::SliderFloat3("CamPos", &camPos[0], -10.0f, 10.0f);
+        ImGui::SliderFloat2("CamPos", &rotation[0], -1.57f, 1.57f);
+        ImGui::SliderFloat("Radius", &radius, 0.1f, 10.0f);
         ImGui::InputFloat3("Grid Size", &gridSize[0]);
         ImGui::SliderFloat("Voxel Size", &gridSize[3], 0.1f, 10.0f);
         ImGui::End();
@@ -232,21 +276,24 @@ int main(int argc, char** argv) {
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
         bgfx::touch(0);
 
-        float projection[16];
-        float view[16];
-        bx::Vec3 camPosVec(camPos[0], camPos[1], camPos[2]);
-        bx::mtxLookAt(view, camPosVec, bx::Vec3(0.0f, 0.0f, 0.0f));
-        float aspect = float(width) / float(height);
-        bx::mtxProj(projection, 50.0f, aspect, 1.0f, 100.0f,
-                    caps->homogeneousDepth);
-        float viewInv[16];
-        bx::mtxInverse(viewInv, view);
-        bgfx::setUniform(u_viewInv, &viewInv, 1);
-        float projInv[16];
-        bx::mtxInverse(projInv, projection);
-        bgfx::setUniform(u_projInv, &projInv, 1);
+        float pitch = rotation.x;
+        float yaw = rotation.y;
+        glm::vec3 target = {0.0f, 1.0f, 0.0f};
+
+        camPos.x = target.x + radius * cos(pitch) * sin(yaw);
+        camPos.y = target.y + radius * sin(pitch);
+        camPos.z = target.z + radius * cos(pitch) * cos(yaw);
+
+        glm::vec3 camF = glm::normalize(target - camPos);
+        glm::vec3 camR =
+            glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
+        glm::vec3 camU = glm::cross(camR, camF);
+        glm::mat3 camMat = glm::mat3(camR, camU, -camF);
+        camMat = glm::transpose(camMat);
+
+        bgfx::setUniform(u_camMat, &camMat[0][0], 1);
         bgfx::setUniform(u_gridSize, &gridSize);
-        bgfx::setUniform(u_camPos, &camPos);
+        bgfx::setUniform(u_camPos, &glm::vec4(camPos, 1.0f)[0]);
         bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
         bgfx::setTexture(1, s_voxelTexture, voxelTexture);
         bgfx::dispatch(0, computeProgram, width, height, 1);
@@ -269,9 +316,6 @@ int main(int argc, char** argv) {
         bgfx::setViewTransform(0, identity, identity);
         bgfx::submit(1, program);
 
-        bgfx::dbgTextClear();
-        bgfx::dbgTextPrintf(2, 2, 0xf0, "Nuum");
-
         bgfx::frame();
     }
 
@@ -279,12 +323,10 @@ int main(int argc, char** argv) {
     bgfx::destroy(ibh);
     bgfx::destroy(vbh);
     bgfx::destroy(u_texture);
-    bgfx::destroy(texture);
     bgfx::destroy(s_voxelTexture);
     bgfx::destroy(voxelTexture);
     bgfx::destroy(u_camPos);
-    bgfx::destroy(u_viewInv);
-    bgfx::destroy(u_projInv);
+    bgfx::destroy(u_camMat);
     bgfx::destroy(u_gridSize);
     bgfx::destroy(computeProgram);
     bgfx::destroy(outputTexture);

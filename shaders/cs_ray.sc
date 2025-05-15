@@ -2,31 +2,12 @@ $ input a_texcoord0
 
 #include <bgfx_compute.sh>
 
-IMAGE2D_WO (u_outputImage, rgba32f, 0 ) ; // output image at binding 0
+IMAGE2D_WO ( u_outputImage, rgba32f, 0 ) ; // output image at binding 0
 SAMPLER3D(s_voxelTexture, 1); // 3D texture at binding 1
 
 uniform vec4 u_camPos; // camera position
+uniform mat3 u_camMat; // inverse view matrix
 uniform vec4 u_gridSize; // xyz: grid dimensions, w: scale factor
-uniform mat4 u_viewInv; // inverse view matrix
-uniform mat4 u_projInv; // inverse projection matrix
-
-// Convert screen coordinates to world ray direction using view and projection matrices
-vec3 screenToWorldRay(vec2 uv, mat4 u_projInv, mat4 u_viewInv) {
-    // Transform from screen space to clip space (-1 to 1)
-    vec4 clipPos = vec4(uv * 2.0 - 1.0, 1.0, 0.0);
-    
-    // Transform from clip space to view space
-    vec4 viewPos = mul(u_projInv, clipPos);
-    viewPos /= viewPos.w;
-    
-    // Ray in view space points forward
-    vec4 viewRay = vec4(viewPos.xy, -1.0, 0.0);
-    
-    // Transform ray to world space
-    vec4 worldRay = mul(u_viewInv, viewRay);
-    
-    return normalize(worldRay.xyz);
-}
 
 // Safer division that avoids dividing by zero
 vec3 safeDiv(vec3 a, vec3 b) {
@@ -44,7 +25,6 @@ void main()
     if (pixelCoords.x >= imageSize.x || pixelCoords.y >= imageSize.y)
         return;
 
-    // Get camera position from inverse view matrix
     vec3 camPos = u_camPos.xyz;
 
     // Volume bounds and grid size from uniforms
@@ -53,8 +33,15 @@ void main()
     vec3 u_voxelGridSize = u_gridSize.xyz; // voxel grid size
 
     // Calculate screen coordinates and ray direction
-    vec2 uv = vec2(pixelCoords) / vec2(imageSize);
-    vec3 rayDir = screenToWorldRay(uv, u_projInv, u_viewInv);
+    float fov = 45.0; // Field of view
+    vec2 uv = ((vec2(pixelCoords) + 0.5) / vec2(imageSize)) * 2.0 - 1.0;
+    uv.y = -uv.y; // Invert y-axis for OpenGL
+    float aspect = float(imageSize.x) / float(imageSize.y);
+    float scale = tan(radians(fov) * 0.5);
+    uv.x *= aspect * scale;
+    uv.y *= scale;
+    vec3 rayDirCam = normalize(vec3(uv, -1.0)); // Ray direction in camera space
+    vec3 rayDir = normalize(u_camMat * rayDirCam); // Ray direction in world space
 
     // imageStore(u_outputImage, pixelCoords, vec4(rayDir * 0.5 + 0.5, 1.0));
     // return;
