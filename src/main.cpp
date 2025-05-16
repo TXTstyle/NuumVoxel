@@ -164,10 +164,8 @@ int main(int argc, char** argv) {
         true);
 #elif BX_PLATFORM_OSX
     bgfx::ProgramHandle program = bgfx::createProgram(
-        bgfx::createShader(
-            bgfx::makeRef(vs_screen_mtl_spv, sizeof(vs_screen_mtl_spv))),
-        bgfx::createShader(
-            bgfx::makeRef(fs_screen_metal_spv, sizeof(fs_screen_mtl_spv))),
+        bgfx::createShader(bgfx::makeRef(vs_screen_mtl, sizeof(vs_screen_mtl))),
+        bgfx::createShader(bgfx::makeRef(fs_screen_mtl, sizeof(fs_screen_mtl))),
         true);
 #endif
 
@@ -202,9 +200,19 @@ int main(int argc, char** argv) {
     std::cout << "Homogeneous Depth: "
               << (caps->homogeneousDepth ? "true" : "false") << std::endl;
 
+#if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
     bgfx::ProgramHandle computeProgram = bgfx::createProgram(
         bgfx::createShader(bgfx::makeRef(cs_ray_spv, sizeof(cs_ray_spv))),
         true);
+#elif BX_PLATFORM_WINDOWS
+    bgfx::ProgramHandle computeProgram = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(cs_ray_dx11, sizeof(cs_ray_dx11))),
+        true);
+#elif BX_PLATFORM_OSX
+    bgfx::ProgramHandle computeProgram = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(cs_ray_mtl, sizeof(cs_ray_mtl))),
+        true);
+#endif
 
     bgfx::UniformHandle u_camPos =
         bgfx::createUniform("u_camPos", bgfx::UniformType::Vec4);

@@ -41,14 +41,14 @@ endif()
 # -------------------------------------------------------------------
 
 if(PLATFORM_WINDOWS)
-FetchContent_Declare(
+    FetchContent_Declare(
         SDL2
         GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
         GIT_TAG release-2.32.4
     )
-FetchContent_MakeAvailable(SDL2)
-include_directories(${SDL2_SOURCE_DIR}/include)
-elseif(PLATFORM_LINUX)
+    FetchContent_MakeAvailable(SDL2)
+    include_directories(${SDL2_SOURCE_DIR}/include)
+elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
     find_package(SDL2 REQUIRED)
     if(SDL2_FOUND)
         include_directories(${SDL2_INCLUDE_DIRS})
@@ -110,7 +110,6 @@ bgfx_compile_shaders(
 # -------------------------------------------------------------------
 # ImGui
 # -------------------------------------------------------------------
-include(FetchContent)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -150,9 +149,9 @@ target_include_directories(nuum PRIVATE
     ${SDL2_SOURCE_DIR}/include
     ${imgui_SOURCE_DIR}
     ${GLM_INCLUDE_DIR}/include
-    ${BGFX_SOURCE_DIR}/bx/include
-    ${BGFX_SOURCE_DIR}/bimg/include
-    ${BGFX_SOURCE_DIR}/bgfx/include
+    ${bgfx_SOURCE_DIR}/bimg/include
+    ${bgfx_SOURCE_DIR}/bgfx/include
+    ${bgfx_SOURCE_DIR}/bx/include
     ${CMAKE_SOURCE_DIR}/src/shaders/include
     ${CMAKE_SOURCE_DIR}/src/shaders/include/generated
 )
@@ -175,6 +174,6 @@ elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
     target_link_libraries(nuum PRIVATE m dl pthread)
     if(PLATFORM_MACOS)
         find_library(COCOA_LIBRARY Cocoa REQUIRED)
-        target_link_libraries(nuum PRIVATE ${COCOA_LIBRARY})
+        target_link_libraries(nuum PRIVATE ${COCOA_LIBRARY} ${SDL2_LIBRARIES})
     endif()
 endif()
