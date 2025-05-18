@@ -12,6 +12,7 @@
 #include <glm/glm.hpp>
 
 #include <backends/imgui_impl_sdl2.h>
+#include "VoxelManager.hpp"
 #include "bgfx/defines.h"
 #include "glm/geometric.hpp"
 #include "glm/matrix.hpp"
@@ -202,25 +203,7 @@ int main(int argc, char** argv) {
         true);
 #endif
 
-    // voxel data for 3D texture
-    uint8_t voxelData[16 * 16 * 16 * 4];
-    for (int z = 0; z < 16; ++z) {
-        for (int y = 0; y < 16; ++y) {
-            for (int x = 0; x < 16; ++x) {
-                int index = (z * 16 * 16 + y * 16 + x) * 4;
-                voxelData[index] = x * 16 + y;     // R
-                voxelData[index + 1] = y * 16 + z; // G
-                voxelData[index + 2] = z * 16 + x; // B
-                voxelData[index + 3] = 255;        // A
-            }
-        }
-    }
-
-    bgfx::TextureHandle voxelTexture = bgfx::createTexture3D(
-        16, 16, 16, false, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_RT,
-        bgfx::copy(voxelData, sizeof(voxelData)));
-    bgfx::UniformHandle s_voxelTexture =
-        bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
+    VoxelManager voxelManager(16, 16, 16);
 
     bgfx::TextureHandle outputTexture = bgfx::createTexture2D(
         width, height, false, 1, bgfx::TextureFormat::RGBA32F,
@@ -322,9 +305,38 @@ int main(int argc, char** argv) {
             if (event.type == SDL_MOUSEWHEEL) {
                 if (isHoveringViewport && !ImGui::IsAnyItemActive()) {
                     radius -= event.wheel.y * 0.1f * scrollSensitivity;
-                    if (radius < 0.15f) {
-                        radius = 0.15f;
+                    if (radius < 0.25f) {
+                        radius = 0.25f;
                     }
+                }
+            }
+            if (event.type == SDL_MOUSEBUTTONDOWN) {
+                if (event.button.button == SDL_BUTTON_LEFT &&
+                    isHoveringViewport && !ImGui::IsAnyItemActive()) {
+                    glm::vec3 rayOrigin = camPos;
+
+                    glm::vec2 pixelCoords = viewportMousePos;
+                    glm::vec2 imageSize = {float(avail.x), float(avail.y)};
+                    glm::vec2 rayNDC =
+                        ((pixelCoords + glm::vec2(0.5f)) / imageSize) * 2.0f -
+                        1.0f;
+
+                    float fov = 45.0f;
+                    float aspectRatio = imageSize.x / imageSize.y;
+                    float scale = tan(glm::radians(fov) * 0.5f);
+
+                    rayNDC.x *= aspectRatio * scale;
+                    rayNDC.y *= scale;
+                    glm::vec3 rayDirection =
+                        glm::normalize(glm::vec3(rayNDC.x, rayNDC.y, -1.0f));
+
+                    rayDirection = glm::normalize(camMat * rayDirection);
+
+                    voxelManager.raycastSetVoxel(rayOrigin, rayDirection,
+                                                 gridSize[3], 1);
+                    std::cout << "Raycast in: " << rayDirection.x << ", "
+                              << rayDirection.y << ", " << rayDirection.z
+                              << std::endl;
                 }
             }
         }
@@ -369,10 +381,13 @@ int main(int argc, char** argv) {
 
         // styple viewport no padding
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-        ImGui::Begin(
-            "Viewport", nullptr,
-            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
-                ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("Viewport", nullptr,
+                     ImGuiWindowFlags_NoScrollbar |
+                         ImGuiWindowFlags_NoScrollWithMouse |
+                         ImGuiWindowFlags_NoCollapse);
+
+        ImGui::SetWindowSize(ImVec2(1000, 600), ImGuiCond_FirstUseEver);
+
         ImVec2 newAvail = ImGui::GetContentRegionAvail();
         if ((avail.x != newAvail.x || avail.y != newAvail.y) &&
             !ImGui::IsMouseDown(0)) {
@@ -387,12 +402,20 @@ int main(int argc, char** argv) {
         ImGui::Image(outputTexture.idx, avail);
         isHoveringViewport = ImGui::IsWindowHovered();
 
+        if (isHoveringViewport) {
+            ImVec2 mousePos = ImGui::GetMousePos();
+            viewportMousePos.x = (mousePos.x - ImGui::GetWindowPos().x);
+            viewportMousePos.y = (mousePos.y - ImGui::GetWindowPos().y);
+        }
+
         ImGui::End();
         ImGui::PopStyleVar();
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
         bgfx::touch(0);
+
+        voxelManager.getVoxelData()->data[0] = 255;
 
         float pitch = rotation.x;
         float yaw = rotation.y;
@@ -405,24 +428,23 @@ int main(int argc, char** argv) {
         camR = glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
         camU = glm::cross(camR, camF);
         camMat = glm::mat3(camR, camU, -camF);
-        // camMat = glm::transpose(camMat);
 
         bgfx::setUniform(u_camMat, &glm::transpose(camMat)[0][0], 1);
         bgfx::setUniform(u_gridSize, &gridSize);
         bgfx::setUniform(u_camPos, &glm::vec4(camPos, 1.0f)[0]);
         bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
-        bgfx::setTexture(1, s_voxelTexture, voxelTexture);
+        bgfx::setTexture(1, voxelManager.getVoxelTextureUniform(),
+                         voxelManager.getTextureHandle());
         bgfx::dispatch(0, computeProgram, avail.x, avail.y, 1);
 
         bgfx::frame();
     }
 
+    voxelManager.destroy();
     bgfx::destroy(program);
     bgfx::destroy(ibh);
     bgfx::destroy(vbh);
     bgfx::destroy(u_texture);
-    bgfx::destroy(s_voxelTexture);
-    bgfx::destroy(voxelTexture);
     bgfx::destroy(u_camPos);
     bgfx::destroy(u_camMat);
     bgfx::destroy(u_gridSize);
