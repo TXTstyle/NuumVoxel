@@ -32,7 +32,7 @@ void main() {
     vec3 u_voxelGridSize = u_gridSize.xyz; // voxel grid size
 
     // Calculate screen coordinates and ray direction
-    float fov = 45.0; // Field of view
+    float fov = 33.0; // Field of view
     vec2 uv = ((vec2(pixelCoords) + 0.5) / vec2(imageSize)) * 2.0 - 1.0;
     uv.y = -uv.y; // Invert y-axis for OpenGL
     float aspect = float(imageSize.x) / float(imageSize.y);

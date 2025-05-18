@@ -16,6 +16,9 @@
 #include "bgfx/defines.h"
 #include "glm/geometric.hpp"
 #include "glm/matrix.hpp"
+#include "glm/trigonometric.hpp"
+#define GLM_ENABLE_EXPERIMENTAL
+#include "glm/gtx/string_cast.hpp"
 #include "imgui_impl_bgfx.h"
 
 #include <imgui.h>
@@ -232,7 +235,8 @@ int main(int argc, char** argv) {
         bgfx::createUniform("u_gridSize", bgfx::UniformType::Vec4);
     glm::vec4 gridSize = {16.0f, 16.0f, 16.0f, 1.0f};
     float radius = 5.0f;
-    glm::vec2 rotation = {0.66f, 0.89f};
+    // glm::vec2 rotation = {0.66f, 0.89f};
+    glm::vec2 rotation = {0.0f, 0.0f};
 
     float mouseSensitivity = 1.0f;
     float scrollSensitivity = 5.0f;
@@ -252,6 +256,9 @@ int main(int argc, char** argv) {
         glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
     glm::vec3 camU = glm::cross(camR, camF);
     glm::mat3 camMat = glm::mat3(camR, camU, -camF);
+
+    glm::vec3 rayDirection = {0.0f, 0.0f, 0.0f};
+    bool mouseDown = false;
 
     bool running = true;
     SDL_Event event;
@@ -275,6 +282,9 @@ int main(int argc, char** argv) {
                 }
             }
             if (event.type == SDL_MOUSEMOTION) {
+                if (event.motion.xrel == 0 && event.motion.yrel == 0) {
+                    continue;
+                }
                 bool hasNoModifiers =
                     !(SDL_GetModState() &
                       (KMOD_SHIFT | KMOD_CTRL | KMOD_ALT | KMOD_GUI));
@@ -310,35 +320,40 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN) {
-                if (event.button.button == SDL_BUTTON_LEFT &&
-                    isHoveringViewport && !ImGui::IsAnyItemActive()) {
-                    glm::vec3 rayOrigin = camPos;
-
-                    glm::vec2 pixelCoords = viewportMousePos;
-                    glm::vec2 imageSize = {float(avail.x), float(avail.y)};
-                    glm::vec2 rayNDC =
-                        ((pixelCoords + glm::vec2(0.5f)) / imageSize) * 2.0f -
-                        1.0f;
-
-                    float fov = 45.0f;
-                    float aspectRatio = imageSize.x / imageSize.y;
-                    float scale = tan(glm::radians(fov) * 0.5f);
-
-                    rayNDC.x *= aspectRatio * scale;
-                    rayNDC.y *= scale;
-                    glm::vec3 rayDirection =
-                        glm::normalize(glm::vec3(rayNDC.x, rayNDC.y, -1.0f));
-
-                    rayDirection = glm::normalize(camMat * rayDirection);
-
-                    voxelManager.raycastSetVoxel(rayOrigin, rayDirection,
-                                                 gridSize[3], 1);
-                    std::cout << "Raycast in: " << rayDirection.x << ", "
-                              << rayDirection.y << ", " << rayDirection.z
-                              << std::endl;
+            if (event.button.button == SDL_BUTTON_LEFT && isHoveringViewport &&
+                !ImGui::IsAnyItemActive()) {
+                if (event.type == SDL_MOUSEBUTTONDOWN) {
+                    mouseDown = true;
                 }
             }
+            if (event.type == SDL_MOUSEBUTTONUP) {
+                mouseDown = false;
+                std::cout << "Mouse up" << std::endl;
+            }
+        }
+
+        if (mouseDown) {
+            glm::vec3 rayOrigin = camPos;
+
+            glm::vec2 pixelCoords = viewportMousePos;
+            glm::vec2 imageSize = glm::vec2(avail.x, avail.y);
+
+            glm::vec2 rayNDC = (pixelCoords / imageSize) * 2.0f - 1.0f;
+            rayNDC.y *= -1.0f;
+
+            float fov = glm::radians(33.0f);
+            float aspectRatio = imageSize.x / imageSize.y;
+            float scale = tan(fov * 0.5f);
+
+            glm::vec3 rayCameraSpace = {rayNDC.x * scale * aspectRatio,
+                                        rayNDC.y * scale, -1.0f};
+
+            rayDirection = glm::normalize(camMat * rayCameraSpace);
+
+            voxelManager.placeVoxelAdjacent(rayOrigin, rayDirection,
+                                            gridSize[3], 1);
+            std::cout << "Raycast dir: " << glm::to_string(rayDirection)
+                      << std::endl;
         }
 
         ImGui_ImplSDL2_NewFrame();
@@ -361,6 +376,21 @@ int main(int argc, char** argv) {
                     viewportMousePos.y);
         ImGui::Text("Is Hovering Viewport: %s",
                     isHoveringViewport ? "true" : "false");
+        ImGui::Text("Mouse Down: %s", mouseDown ? "true" : "false");
+        ImGui::End();
+
+        ImGui::Begin("Cam debug info");
+        ImGui::Text("CamPos: %.1f, %.1f, %.1f", camPos.x, camPos.y, camPos.z);
+        ImGui::Text("CamF: %.1f, %.1f, %.1f", camF.x, camF.y, camF.z);
+        ImGui::Text("CamR: %.1f, %.1f, %.1f", camR.x, camR.y, camR.z);
+        ImGui::Text("CamU: %.1f, %.1f, %.1f", camU.x, camU.y, camU.z);
+        ImGui::Text("Viewport Mouse Position: %.1f, %.1f", viewportMousePos.x,
+                    viewportMousePos.y);
+        ImGui::Text("Viewport Size: %.1f, %.1f", avail.x, avail.y);
+        ImGui::Text("Voxel Size: %.1f", gridSize[3]);
+        ImGui::Text("Ray Direction: %.1f, %.1f, %.1f", rayDirection.x,
+                    rayDirection.y, rayDirection.z);
+
         ImGui::End();
 
         ImGui::Begin("Palette");
@@ -395,8 +425,7 @@ int main(int argc, char** argv) {
             bgfx::destroy(outputTexture);
             outputTexture = bgfx::createTexture2D(
                 uint16_t(avail.x), uint16_t(avail.y), false, 1,
-                bgfx::TextureFormat::RGBA32F,
-                BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
+                bgfx::TextureFormat::RGBA32F, BGFX_TEXTURE_COMPUTE_WRITE);
         }
 
         ImGui::Image(outputTexture.idx, avail);
@@ -415,10 +444,8 @@ int main(int argc, char** argv) {
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
         bgfx::touch(0);
 
-        voxelManager.getVoxelData()->data[0] = 255;
-
-        float pitch = rotation.x;
-        float yaw = rotation.y;
+        float pitch = rotation.x; // rotation.x = 0
+        float yaw = rotation.y;   // rotation.y = 0
 
         camPos.x = target.x + radius * cos(pitch) * sin(yaw);
         camPos.y = target.y + radius * sin(pitch);
