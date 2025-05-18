@@ -2,6 +2,8 @@
 
 **Nuum** is a fast, modern voxel model editor powered by real-time GPU raytracing. Inspired by tools like MagicaVoxel, Nuum is designed for creativity and responsiveness — minimal interface, instant feedback, and a focus on fluid voxel sculpting.
 
+![NuumVoxel](preview.png)
+
 ---
 
 ## Features
@@ -12,7 +14,7 @@
 
 ## Planded Features
 
-- [ ] **Intuitive camera navigation** and UI built with ImGui
+- [x] **Intuitive camera navigation** and UI built with ImGui
 - [ ] **Material/color palette system**
 - [ ] **Custom voxel file format**, with export options planned
 
@@ -22,8 +24,8 @@
 
 | Action       | Key / Mouse        |
 | ------------ | ------------------ |
-| Orbit camera | Right mouse drag   |
-| Pan camera   | Middle mouse drag  |
+| Orbit camera | Right mouse        |
+| Pan camera   | Ctrl + Right mouse |
 | Zoom         | Scroll wheel       |
 | Add voxel    | Left click         |
 | Remove voxel | Shift + Left click |

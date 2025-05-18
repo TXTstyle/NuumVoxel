@@ -1,6 +1,10 @@
 #include <SDL.h>
 #include <SDL_events.h>
+#include <SDL_keyboard.h>
+#include <SDL_keycode.h>
+#include <SDL_mouse.h>
 #include <SDL_syswm.h>
+#include <array>
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
 #include <bx/bx.h>
@@ -9,6 +13,8 @@
 
 #include <backends/imgui_impl_sdl2.h>
 #include "bgfx/defines.h"
+#include "glm/geometric.hpp"
+#include "glm/matrix.hpp"
 #include "imgui_impl_bgfx.h"
 
 #include <imgui.h>
@@ -83,8 +89,8 @@ static void init_bgfx(SDL_Window* window) {
     init.type = bgfx::RendererType::Metal;
 #endif
 
-    init.resolution.width = 1280;
-    init.resolution.height = 720;
+    init.resolution.width = 1600;
+    init.resolution.height = 900;
     init.resolution.reset = BGFX_RESET_VSYNC;
     bgfx::renderFrame();
     if (!bgfx::init(init)) {
@@ -112,15 +118,42 @@ bgfx::TextureHandle load_texture(const char* filename) {
     return texture;
 }
 
+void RenderDockingUI() {
+    // Setup flags
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking;
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGui::SetNextWindowViewport(viewport->ID);
+
+    // Disable title bar, borders, etc.
+    window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    window_flags |=
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::Begin("MainDockspace", nullptr, window_flags);
+    ImGui::PopStyleVar(2);
+
+    // Create dockspace
+    ImGuiID dockspace_id = ImGui::GetID("MyDockspace");
+    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f));
+
+    ImGui::End();
+}
+
 int main(int argc, char** argv) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
         return 1;
     }
 
+    int width = 1600, height = 900;
     SDL_Window* window =
         SDL_CreateWindow("Nuum", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                         1280, 720, SDL_WINDOW_RESIZABLE);
+                         width, height, SDL_WINDOW_RESIZABLE);
 
     init_bgfx(window);
 
@@ -189,16 +222,9 @@ int main(int argc, char** argv) {
     bgfx::UniformHandle s_voxelTexture =
         bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
 
-    bgfx::TextureHandle outputTexture =
-        bgfx::createTexture2D(1280, 720, false, 1, bgfx::TextureFormat::RGBA32F,
-                              BGFX_TEXTURE_COMPUTE_WRITE);
-
-    int width = 1280, height = 720;
-    const bgfx::Caps* caps = bgfx::getCaps();
-    std::cout << "Renderer: " << bgfx::getRendererName(caps->rendererType)
-              << std::endl;
-    std::cout << "Homogeneous Depth: "
-              << (caps->homogeneousDepth ? "true" : "false") << std::endl;
+    bgfx::TextureHandle outputTexture = bgfx::createTexture2D(
+        width, height, false, 1, bgfx::TextureFormat::RGBA32F,
+        BGFX_TEXTURE_COMPUTE_WRITE);
 
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
     bgfx::ProgramHandle computeProgram = bgfx::createProgram(
@@ -223,7 +249,26 @@ int main(int argc, char** argv) {
         bgfx::createUniform("u_gridSize", bgfx::UniformType::Vec4);
     glm::vec4 gridSize = {16.0f, 16.0f, 16.0f, 1.0f};
     float radius = 5.0f;
-    glm::vec2 rotation = {0.0f, 0.0f};
+    glm::vec2 rotation = {0.66f, 0.89f};
+
+    float mouseSensitivity = 1.0f;
+    float scrollSensitivity = 5.0f;
+    ImVec2 avail = {0.0f, 0.0f};
+    bool isHoveringViewport = false;
+    glm::vec2 viewportMousePos = {0.0f, 0.0f};
+
+    std::array<glm::vec4, 16> paletteColors;
+    for (int i = 0; i < 16; ++i) {
+        paletteColors[i] = {float(i) / 16.0f, float(i) / 16.0f,
+                            float(i) / 16.0f, 1.0f};
+    }
+
+    glm::vec3 target = {0.0f, 1.0f, 0.0f};
+    glm::vec3 camF = glm::normalize(target - camPos);
+    glm::vec3 camR =
+        glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::vec3 camU = glm::cross(camR, camF);
+    glm::mat3 camMat = glm::mat3(camR, camU, -camF);
 
     bool running = true;
     SDL_Event event;
@@ -244,17 +289,17 @@ int main(int argc, char** argv) {
                                       uint16_t(event.window.data2));
                     width = event.window.data1;
                     height = event.window.data2;
-                    bgfx::destroy(outputTexture);
-                    outputTexture = bgfx::createTexture2D(
-                        uint16_t(width), uint16_t(height), false, 1,
-                        bgfx::TextureFormat::RGBA32F,
-                        BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
                 }
             }
             if (event.type == SDL_MOUSEMOTION) {
-                if (event.motion.state & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-                    rotation.x += event.motion.yrel * 0.01f;
-                    rotation.y += event.motion.xrel * -0.01f;
+                bool hasNoModifiers =
+                    !(SDL_GetModState() &
+                      (KMOD_SHIFT | KMOD_CTRL | KMOD_ALT | KMOD_GUI));
+                if (event.motion.state & SDL_BUTTON(SDL_BUTTON_RIGHT) &&
+                    hasNoModifiers && isHoveringViewport &&
+                    !ImGui::IsAnyItemActive()) {
+                    rotation.x += event.motion.yrel * 0.01f * mouseSensitivity;
+                    rotation.y += event.motion.xrel * -0.01f * mouseSensitivity;
                     if (rotation.x > 1.57f) {
                         rotation.x = 1.57f;
                     } else if (rotation.x < -1.57f) {
@@ -266,6 +311,21 @@ int main(int argc, char** argv) {
                         rotation.y = 0;
                     }
                 }
+                if (event.motion.state & SDL_BUTTON(SDL_BUTTON_RIGHT) &&
+                    SDL_GetModState() & KMOD_CTRL && isHoveringViewport &&
+                    !ImGui::IsAnyItemActive()) {
+                    glm::vec3 mouseDirWorld = camR * float(-event.motion.xrel) +
+                                              camU * float(event.motion.yrel);
+                    target += mouseDirWorld * 0.001f * radius;
+                }
+            }
+            if (event.type == SDL_MOUSEWHEEL) {
+                if (isHoveringViewport && !ImGui::IsAnyItemActive()) {
+                    radius -= event.wheel.y * 0.1f * scrollSensitivity;
+                    if (radius < 0.15f) {
+                        radius = 0.15f;
+                    }
+                }
             }
         }
 
@@ -273,12 +333,62 @@ int main(int argc, char** argv) {
         ImGui_Implbgfx_NewFrame();
         ImGui::NewFrame();
 
+        RenderDockingUI();
+
+        // Set viewport for Nuum window
         ImGui::Begin("Nuum");
         ImGui::SliderFloat2("CamPos", &rotation[0], -1.57f, 1.57f);
-        ImGui::SliderFloat("Radius", &radius, 0.1f, 10.0f);
+        ImGui::SliderFloat("Zoom Sensitivity", &scrollSensitivity, 0.1f, 10.0f);
+        ImGui::SliderFloat("Mouse Sensitivity", &mouseSensitivity, 0.1f, 10.0f);
         ImGui::InputFloat3("Grid Size", &gridSize[0]);
         ImGui::SliderFloat("Voxel Size", &gridSize[3], 0.1f, 10.0f);
+        ImGui::InputFloat3("View Center", &target[0]);
+        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+        ImGui::Text("Mouse Position: %.1f, %.1f", io.MousePos.x, io.MousePos.y);
+        ImGui::Text("Viewport Mouse Position: %.1f, %.1f", viewportMousePos.x,
+                    viewportMousePos.y);
+        ImGui::Text("Is Hovering Viewport: %s",
+                    isHoveringViewport ? "true" : "false");
         ImGui::End();
+
+        ImGui::Begin("Palette");
+        for (int i = 0; i < 16; ++i) {
+            ImGui::PushID(i);
+
+            ImGui::PushItemWidth(100);
+            ImGui::ColorEdit4("##color", &paletteColors[i][0],
+                              ImGuiColorEditFlags_NoInputs |
+                                  ImGuiColorEditFlags_NoLabel |
+                                  ImGuiColorEditFlags_NoBorder);
+            ImGui::PopID();
+            ImGui::PopItemWidth();
+        }
+        ImGui::End();
+
+        ImGui::ShowDemoWindow();
+
+        // styple viewport no padding
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::Begin(
+            "Viewport", nullptr,
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                ImGuiWindowFlags_NoCollapse);
+        ImVec2 newAvail = ImGui::GetContentRegionAvail();
+        if ((avail.x != newAvail.x || avail.y != newAvail.y) &&
+            !ImGui::IsMouseDown(0)) {
+            avail = newAvail;
+            bgfx::destroy(outputTexture);
+            outputTexture = bgfx::createTexture2D(
+                uint16_t(avail.x), uint16_t(avail.y), false, 1,
+                bgfx::TextureFormat::RGBA32F,
+                BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
+        }
+
+        ImGui::Image(outputTexture.idx, avail);
+        isHoveringViewport = ImGui::IsWindowHovered();
+
+        ImGui::End();
+        ImGui::PopStyleVar();
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
@@ -286,43 +396,23 @@ int main(int argc, char** argv) {
 
         float pitch = rotation.x;
         float yaw = rotation.y;
-        glm::vec3 target = {0.0f, 1.0f, 0.0f};
 
         camPos.x = target.x + radius * cos(pitch) * sin(yaw);
         camPos.y = target.y + radius * sin(pitch);
         camPos.z = target.z + radius * cos(pitch) * cos(yaw);
 
-        glm::vec3 camF = glm::normalize(target - camPos);
-        glm::vec3 camR =
-            glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
-        glm::vec3 camU = glm::cross(camR, camF);
-        glm::mat3 camMat = glm::mat3(camR, camU, -camF);
-        camMat = glm::transpose(camMat);
+        camF = glm::normalize(target - camPos);
+        camR = glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
+        camU = glm::cross(camR, camF);
+        camMat = glm::mat3(camR, camU, -camF);
+        // camMat = glm::transpose(camMat);
 
-        bgfx::setUniform(u_camMat, &camMat[0][0], 1);
+        bgfx::setUniform(u_camMat, &glm::transpose(camMat)[0][0], 1);
         bgfx::setUniform(u_gridSize, &gridSize);
         bgfx::setUniform(u_camPos, &glm::vec4(camPos, 1.0f)[0]);
         bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
         bgfx::setTexture(1, s_voxelTexture, voxelTexture);
-        bgfx::dispatch(0, computeProgram, width, height, 1);
-
-        bgfx::touch(1);
-        bgfx::setViewClear(1, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x00ff00ff,
-                           1.0f, 0);
-        bgfx::setViewRect(1, 0, 0, width, height);
-        bgfx::setViewFrameBuffer(1, BGFX_INVALID_HANDLE);
-        bgfx::setViewClear(1, BGFX_CLEAR_COLOR, 0xff0000ff, 1.0f, 0);
-        bgfx::setTexture(0, u_texture, outputTexture);
-        bgfx::setVertexBuffer(0, vbh);
-        bgfx::setIndexBuffer(ibh);
-        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
-                       BGFX_STATE_MSAA |
-                       BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
-                                             BGFX_STATE_BLEND_INV_SRC_ALPHA));
-        float identity[16];
-        bx::mtxIdentity(identity);
-        bgfx::setViewTransform(0, identity, identity);
-        bgfx::submit(1, program);
+        bgfx::dispatch(0, computeProgram, avail.x, avail.y, 1);
 
         bgfx::frame();
     }

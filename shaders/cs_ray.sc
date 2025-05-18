@@ -18,8 +18,7 @@ vec3 safeDiv(vec3 a, vec3 b) {
     );
 }
 
-void main()
-{
+void main() {
     ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 imageSize = imageSize(u_outputImage);
     if (pixelCoords.x >= imageSize.x || pixelCoords.y >= imageSize.y)
@@ -59,9 +58,13 @@ void main()
     float tmax = min(tbigger.x, min(tbigger.y, tbigger.z));
 
     // Early exit if ray doesn't hit volume
+    const vec3 fromColor = vec3(0.16, 0.29, 0.48);
+    const vec3 toColor = vec3_splat(0.058);
+    float mixFactor = smoothstep(0.0, 1.0, 1 - (vec2(pixelCoords)/vec2(imageSize)).y);
+    const vec4 bgColor = vec4(mix(toColor, fromColor, mixFactor), 1.0);
     if (tmax <= tmin)
     {
-        imageStore(u_outputImage, pixelCoords, vec4(0.0, 0.0, 0.0, 1.0));
+        imageStore(u_outputImage, pixelCoords, bgColor);
         return;
     }
 
@@ -132,6 +135,6 @@ void main()
         }
     }
 
-    // If we didn't hit anything, output background color
-    imageStore(u_outputImage, pixelCoords, vec4(0.0, 0.0, 0.0, 1.0));
+    // If we didn't hit anything
+    imageStore(u_outputImage, pixelCoords, bgColor);
 }
