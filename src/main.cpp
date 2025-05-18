@@ -12,6 +12,7 @@
 #include <glm/glm.hpp>
 
 #include <backends/imgui_impl_sdl2.h>
+#include "Palette.hpp"
 #include "VoxelManager.hpp"
 #include "bgfx/defines.h"
 #include "glm/geometric.hpp"
@@ -244,11 +245,8 @@ int main(int argc, char** argv) {
     bool isHoveringViewport = false;
     glm::vec2 viewportMousePos = {0.0f, 0.0f};
 
-    std::array<glm::vec4, 16> paletteColors;
-    for (int i = 0; i < 16; ++i) {
-        paletteColors[i] = {float(i) / 16.0f, float(i) / 16.0f,
-                            float(i) / 16.0f, 1.0f};
-    }
+    Palette palette("Default", 16);
+    voxelManager.setPalette(&palette);
 
     glm::vec3 target = {0.0f, 1.0f, 0.0f};
     glm::vec3 camF = glm::normalize(target - camPos);
@@ -328,7 +326,6 @@ int main(int argc, char** argv) {
             }
             if (event.type == SDL_MOUSEBUTTONUP) {
                 mouseDown = false;
-                std::cout << "Mouse up" << std::endl;
             }
         }
 
@@ -351,7 +348,7 @@ int main(int argc, char** argv) {
             rayDirection = glm::normalize(camMat * rayCameraSpace);
 
             voxelManager.placeVoxelAdjacent(rayOrigin, rayDirection,
-                                            gridSize[3], 1);
+                                            gridSize[3], palette.getSelectedColor());
             std::cout << "Raycast dir: " << glm::to_string(rayDirection)
                       << std::endl;
         }
@@ -393,19 +390,7 @@ int main(int argc, char** argv) {
 
         ImGui::End();
 
-        ImGui::Begin("Palette");
-        for (int i = 0; i < 16; ++i) {
-            ImGui::PushID(i);
-
-            ImGui::PushItemWidth(100);
-            ImGui::ColorEdit4("##color", &paletteColors[i][0],
-                              ImGuiColorEditFlags_NoInputs |
-                                  ImGuiColorEditFlags_NoLabel |
-                                  ImGuiColorEditFlags_NoBorder);
-            ImGui::PopID();
-            ImGui::PopItemWidth();
-        }
-        ImGui::End();
+        palette.renderWindow();
 
         ImGui::ShowDemoWindow();
 

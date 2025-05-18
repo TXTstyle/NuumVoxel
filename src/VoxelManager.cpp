@@ -1,5 +1,6 @@
 #include "VoxelManager.hpp"
 #include "bgfx/bgfx.h"
+#include <cstdarg>
 #include <cstdlib>
 #include <iostream>
 #include <glm/glm.hpp>
@@ -81,14 +82,15 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z,
     voxelData[index] = value;
 
     // Create a small memory block for the update
-    uint8_t voxColor[4] = {255, 0, 0, 255}; // Red voxel by default
-
-    // You can set different colors based on value if desired
-    if (value > 1) {
-        voxColor[0] = 0;   // R
-        voxColor[1] = 0;   // G
-        voxColor[2] = 255; // B
-    }
+    auto paletteColor = palette->getColors()[value];
+    uint8_t voxColor[4] = {};     // RGBA
+    voxColor[0] = paletteColor.r*255; // R
+    voxColor[1] = paletteColor.g*255; // G
+    voxColor[2] = paletteColor.b*255; // B
+    voxColor[3] = paletteColor.a*255; // A
+    std::cout << "Set voxel at: " << x << ", " << y << ", " << z
+              << " to color: " << +voxColor[0] << ", " << +voxColor[1] << ", "
+              << +voxColor[2] << ", " << +voxColor[3] << std::endl;
 
     lastVoxelPos = glm::vec3(x, y, z);
 
@@ -322,12 +324,13 @@ void VoxelManager::raycastSetVoxel(glm::vec3& rayOrigin,
         hitVoxel, hitPoint, hitNormal);
 
     if (hit) {
-        std::cout << "Hit voxel at: " << hitVoxel.x << ", " << hitVoxel.y
-                  << ", " << hitVoxel.z << std::endl;
-        std::cout << "Hit point: " << hitPoint.x << ", " << hitPoint.y << ", "
-                  << hitPoint.z << std::endl;
-        std::cout << "Hit normal: " << hitNormal.x << ", " << hitNormal.y
-                  << ", " << hitNormal.z << std::endl;
+        // std::cout << "Hit voxel at: " << hitVoxel.x << ", " << hitVoxel.y
+        //           << ", " << hitVoxel.z << std::endl;
+        // std::cout << "Hit point: " << hitPoint.x << ", " << hitPoint.y << ",
+        // "
+        //           << hitPoint.z << std::endl;
+        // std::cout << "Hit normal: " << hitNormal.x << ", " << hitNormal.y
+        //           << ", " << hitNormal.z << std::endl;
 
         glm::ivec3 targetVoxel;
 

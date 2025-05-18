@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Palette.hpp"
 #include <cstdint>
 #include <vector>
 #include <bgfx/bgfx.h>
@@ -16,6 +17,7 @@ class VoxelManager {
   private:
     uint32_t width, height, depth;
     std::vector<uint16_t> voxelData;
+    Palette* palette;
 
     const bgfx::Memory* mem;
     bgfx::TextureHandle textureHandle;
@@ -44,6 +46,10 @@ class VoxelManager {
     void placeVoxelAdjacent(glm::vec3& rayOrigin, glm::vec3& rayDirection, float voxelSize, uint16_t value);
     void placeVoxelOnGrid(glm::vec3& rayOrigin, glm::vec3& rayDirection, float voxelSize, uint16_t value);
     void replaceVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection, float voxelSize, uint16_t value);
+
+    inline void setPalette(Palette* newPalette) {
+        palette = newPalette;
+    }
 
     inline bgfx::TextureHandle& getTextureHandle() {
         return textureHandle;
