@@ -108,6 +108,26 @@ bgfx_compile_shaders(
 )
 
 # -------------------------------------------------------------------
+# FreeType
+# -------------------------------------------------------------------
+
+if(PLATFORM_WINDOWS)
+    FetchContent_Declare(
+        freetype
+        GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
+        GIT_TAG VER-2-13-3
+    )
+    FetchContent_MakeAvailable(freetype)
+elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
+    find_package(Freetype REQUIRED)
+    if(FREETYPE_FOUND)
+        include_directories(${FREETYPE_INCLUDE_DIRS})
+    else()
+        message(FATAL_ERROR "Freetype not found")
+    endif()
+endif()
+
+# -------------------------------------------------------------------
 # ImGui
 # -------------------------------------------------------------------
 FetchContent_Declare(
@@ -125,11 +145,16 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
     ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
+    ${imgui_SOURCE_DIR}/misc/freetype/imgui_freetype.cpp
 )
 target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
     ${imgui_SOURCE_DIR}/misc/cpp
+    ${imgui_SOURCE_DIR}/misc/freetype
+)
+target_compile_definitions(imgui PUBLIC
+    IMGUI_ENABLE_FREETYPE
 )
 
 
@@ -163,6 +188,7 @@ target_link_libraries(nuum PRIVATE
     bgfx
     glm
     imgui
+    freetype
 )
 set_target_properties(nuum PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
 

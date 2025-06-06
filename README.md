@@ -8,13 +8,13 @@
 
 ## Features
 
-- **Voxel editing** with brush tools, palette, and undo/redo
+- **Intuitive camera navigation** and UI built with ImGui
 - **Real-time GPU raytracing** with a 3D texture voxel backend
 - Built using **bgfx**, **SDL2**, and **Dear ImGui**
 
 ## Planded Features
 
-- [x] **Intuitive camera navigation** and UI built with ImGui
+- [ ] **Voxel editing** with brush tools, palette, and undo/redo
 - [ ] **Material/color palette system**
 - [ ] **Custom voxel file format**, with export options planned
 
@@ -38,8 +38,7 @@
 - C++20 or later
 - CMake 3.5
 - SDL2
-- bgfx
-- ImGui
+- Freetype
 
 ### Build Instructions
 
