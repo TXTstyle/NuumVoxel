@@ -25,13 +25,14 @@ class VoxelManager {
     glm::vec3 lastVoxelPos = {0.0f, 0.0f, 0.0f};
 
   public:
-    VoxelManager(uint32_t width, uint32_t height, uint32_t depth);
+    VoxelManager();
     VoxelManager(VoxelManager&&) = default;
     VoxelManager(const VoxelManager&) = default;
     VoxelManager& operator=(VoxelManager&&) = default;
     VoxelManager& operator=(const VoxelManager&) = default;
     ~VoxelManager();
-    void destroy();
+    void Init(uint32_t width, uint32_t height, uint32_t depth);
+    void Destroy();
 
     void setVoxel(uint32_t x, uint32_t y, uint32_t z, uint16_t value);
     uint16_t getVoxel(uint32_t x, uint32_t y, uint32_t z) const;

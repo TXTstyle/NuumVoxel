@@ -8,7 +8,11 @@
 #include <functional>
 #include <iostream>
 
-VoxelManager::VoxelManager(uint32_t width, uint32_t height, uint32_t depth) {
+VoxelManager::VoxelManager() {}
+
+VoxelManager::~VoxelManager() {}
+
+void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
     this->width = width;
     this->height = height;
     this->depth = depth;
@@ -55,9 +59,7 @@ VoxelManager::VoxelManager(uint32_t width, uint32_t height, uint32_t depth) {
         bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
 }
 
-VoxelManager::~VoxelManager() {}
-
-void VoxelManager::destroy() {
+void VoxelManager::Destroy() {
     if (s_voxelTexture.idx != bgfx::kInvalidHandle) {
         bgfx::destroy(s_voxelTexture);
         s_voxelTexture.idx = bgfx::kInvalidHandle;
@@ -83,11 +85,11 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z,
 
     // Create a small memory block for the update
     auto paletteColor = palette->getColors()[value];
-    uint8_t voxColor[4] = {};     // RGBA
-    voxColor[0] = paletteColor.r*255; // R
-    voxColor[1] = paletteColor.g*255; // G
-    voxColor[2] = paletteColor.b*255; // B
-    voxColor[3] = paletteColor.a*255; // A
+    uint8_t voxColor[4] = {};           // RGBA
+    voxColor[0] = paletteColor.r * 255; // R
+    voxColor[1] = paletteColor.g * 255; // G
+    voxColor[2] = paletteColor.b * 255; // B
+    voxColor[3] = paletteColor.a * 255; // A
     std::cout << "Set voxel at: " << x << ", " << y << ", " << z
               << " to color: " << +voxColor[0] << ", " << +voxColor[1] << ", "
               << +voxColor[2] << ", " << +voxColor[3] << std::endl;
