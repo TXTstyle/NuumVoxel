@@ -26,7 +26,7 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 int index = (z * height * width + y * width + x); // R32F
-                voxelArray[index] = (index % 7)/ 6.0f;
+                voxelArray[index] = (index % 17)/ 255.0f;
             }
         }
     }
@@ -69,7 +69,6 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z,
     voxColor[0] = paletteColor.r * 255; // R
     voxColor[1] = paletteColor.g * 255; // G
     voxColor[2] = paletteColor.b * 255; // B
-    voxColor[3] = paletteColor.a * 255; // A
     std::cout << "Set voxel at: " << x << ", " << y << ", " << z
               << " to color: " << +voxColor[0] << ", " << +voxColor[1] << ", "
               << +voxColor[2] << ", " << +voxColor[3] << std::endl;

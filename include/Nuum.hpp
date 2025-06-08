@@ -2,11 +2,11 @@
 
 #include "Camera.hpp"
 #include "VoxelManager.hpp"
+#include "PaletteManager.hpp"
 #include "imgui.h"
 #include <SDL.h>
 #include <bgfx/bgfx.h>
 #include <glm/glm.hpp>
-#include <vector>
 
 class Nuum {
   private:
@@ -36,9 +36,7 @@ class Nuum {
 
     Camera camera;
     VoxelManager voxelManager;
-    std::vector<Palette> palettes;
-    uint32_t selectedPaletteIndex = 0;
-    uint32_t selectedColorIndex = 0;
+    PaletteManager paletteManager;
 
     void InitBgfx(SDL_Window* window);
     void InitImGui(SDL_Window* window);
@@ -51,7 +49,6 @@ class Nuum {
     void HandleEvents();
     void RenderDockspace();
     void RenderDebugWindow();
-    void RenderPaletteWindow();
 
   public:
     Nuum();

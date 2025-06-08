@@ -20,7 +20,13 @@ class Palette {
     Palette& operator=(const Palette&) = default;
     ~Palette();
 
+    inline void setSelectedColorIndex(uint32_t index) {
+        if (index < colors.size()) {
+            selectedColorIndex = index;
+        }
+    }
     inline const std::string& getName() const { return name; }
     inline std::vector<glm::vec4>& getColors() { return colors; }
-    inline uint32_t getSelectedColor() const { return selectedColorIndex; }
+    inline const glm::vec4& getSelectedColor() const { return colors[selectedColorIndex]; }
+    inline const uint32_t getSelectedIndex() const { return selectedColorIndex; }
 };

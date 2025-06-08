@@ -8,7 +8,6 @@
 #include <SDL_syswm.h>
 #include <SDL_video.h>
 #include <iostream>
-#include <vector>
 
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_bgfx.h"
@@ -158,52 +157,6 @@ void Nuum::RenderViewportWindow() {
     ImGui::PopStyleVar();
 }
 
-void Nuum::RenderPaletteWindow() {
-    if (!openPaletteWindow) {
-        return;
-    }
-    ImGui::Begin("Palettes", &openPaletteWindow);
-    if (ImGui::BeginCombo("Palettes", "Select Palette",
-                          ImGuiComboFlags_WidthFitPreview)) {
-        for (uint32_t i = 0; i < palettes.size(); ++i) {
-            ImGui::PushID(i);
-            if (ImGui::Selectable(palettes[i].getName().c_str(),
-                                  selectedPaletteIndex == i)) {
-                selectedPaletteIndex = i;
-                voxelManager.setPalette(&palettes[selectedPaletteIndex]);
-            }
-            ImGui::PopID();
-        }
-        ImGui::EndCombo();
-    }
-    auto& colors = palettes[selectedPaletteIndex].getColors();
-
-    for (uint32_t i = 0; i < colors.size(); ++i) {
-        ImGui::PushID(i);
-        // no inputs, no label, alpha preview half, no tooltip
-        ImGui::ColorEdit4(std::to_string(i).c_str(), &colors[i][0],
-                          ImGuiColorEditFlags_NoInputs |
-                              ImGuiColorEditFlags_NoLabel |
-                              ImGuiColorEditFlags_AlphaPreviewHalf |
-                              ImGuiColorEditFlags_NoTooltip);
-        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(1)) {
-            selectedColorIndex = i;
-        }
-        ImGui::PopID();
-    }
-    // selected color
-    ImGui::Text("Selected Color: ");
-    ImGui::SameLine();
-    ImGui::ColorButton(
-        "Selected Color",
-        ImVec4(colors[selectedColorIndex][0], colors[selectedColorIndex][1],
-               colors[selectedColorIndex][2], colors[selectedColorIndex][3]),
-        ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
-            ImGuiColorEditFlags_AlphaPreviewHalf);
-
-    ImGui::End();
-}
-
 void Nuum::RenderDebugWindow() {
     if (!openDebugWindow) {
         return;
@@ -342,10 +295,10 @@ int Nuum::Init(int argc, char** argv) {
         return 1;
     }
 
-    SDL_DisplayMode displayMode;
-    SDL_GetDesktopDisplayMode(0, &displayMode);
-    width = displayMode.w * 0.6f;
-    height = displayMode.h * 0.6f;
+    // SDL_DisplayMode displayMode;
+    // SDL_GetDesktopDisplayMode(0, &displayMode);
+    // width = displayMode.w * 0.6f;
+    // height = displayMode.h * 0.6f;
     SDL_Window* window =
         SDL_CreateWindow("Nuum", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                          width, height, SDL_WINDOW_RESIZABLE);
@@ -362,12 +315,8 @@ int Nuum::Init(int argc, char** argv) {
     viewport = ImGui::GetMainViewport();
 
     voxelManager.Init(16, 16, 16);
-    std::vector<glm::vec4> colors = {
-        {1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f},
-        {0.0f, 0.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 0.0f, 1.0f},
-        {1.0f, 0.5f, 0.5f, 1.0f}, {0.5f, 1.0f, 1.0f, 1.0f}};
-    palettes.emplace_back("Default", std::move(colors));
-    voxelManager.setPalette(&palettes[0]);
+    paletteManager.Init();
+    // voxelManager.setPalette(&palettes[0]);
 
     camera.Init();
 
@@ -388,7 +337,7 @@ void Nuum::Run() {
         RenderViewportWindow();
         camera.RenderDebugWindow(&openCameraWindow);
         RenderDebugWindow();
-        RenderPaletteWindow();
+        paletteManager.RenderWindow(&openPaletteWindow);
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
@@ -398,6 +347,7 @@ void Nuum::Run() {
 
         // Render
         bgfx::touch(0);
+        paletteManager.UpdateColorData();
         RenderViewport();
 
         bgfx::frame();
