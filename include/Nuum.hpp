@@ -20,11 +20,7 @@ class Nuum {
 
     bool openCameraWindow = true;
     bool openDebugWindow = true;
-
-    bgfx::VertexLayout screenVertexLayout;
-    bgfx::VertexBufferHandle vbh;
-    bgfx::IndexBufferHandle ibh;
-    bgfx::ProgramHandle program;
+    bool openPaletteWindow = true;
 
     bgfx::UniformHandle u_camPos;
     bgfx::UniformHandle u_camMat;
@@ -41,6 +37,8 @@ class Nuum {
     Camera camera;
     VoxelManager voxelManager;
     std::vector<Palette> palettes;
+    uint32_t selectedPaletteIndex = 0;
+    uint32_t selectedColorIndex = 0;
 
     void InitBgfx(SDL_Window* window);
     void InitImGui(SDL_Window* window);
@@ -53,6 +51,7 @@ class Nuum {
     void HandleEvents();
     void RenderDockspace();
     void RenderDebugWindow();
+    void RenderPaletteWindow();
 
   public:
     Nuum();

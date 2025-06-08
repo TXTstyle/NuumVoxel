@@ -13,15 +13,14 @@ class Palette {
 
   public:
     Palette(std::string name, uint32_t size);
+    Palette(std::string name, const std::vector<glm::vec4> colors);
     Palette(Palette&&) = default;
     Palette(const Palette&) = default;
     Palette& operator=(Palette&&) = default;
     Palette& operator=(const Palette&) = default;
     ~Palette();
 
-    void renderWindow();
-
     inline const std::string& getName() const { return name; }
-    inline const std::vector<glm::vec4>& getColors() const { return colors; }
+    inline std::vector<glm::vec4>& getColors() { return colors; }
     inline uint32_t getSelectedColor() const { return selectedColorIndex; }
 };

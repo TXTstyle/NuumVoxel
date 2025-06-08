@@ -16,13 +16,11 @@ enum class PlacementMode {
 class VoxelManager {
   private:
     uint32_t width, height, depth;
-    std::vector<uint16_t> voxelData;
     Palette* palette;
 
     const bgfx::Memory* mem;
     bgfx::TextureHandle textureHandle;
     bgfx::UniformHandle s_voxelTexture;
-    glm::vec3 lastVoxelPos = {0.0f, 0.0f, 0.0f};
 
   public:
     VoxelManager();
@@ -36,12 +34,15 @@ class VoxelManager {
 
     void setVoxel(uint32_t x, uint32_t y, uint32_t z, uint16_t value);
     uint16_t getVoxel(uint32_t x, uint32_t y, uint32_t z) const;
+    glm::vec4 getSize() const {
+        return glm::vec4(width, height, depth, 1.0f);
+    }
 
     // void raycastSetVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection, float voxelSize,
     //                      uint16_t value);
     void raycastSetVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection, float voxelSize, uint16_t value, PlacementMode mode = PlacementMode::ADJACENT);
 
-    void resize(uint32_t newWidth, uint32_t newHeight, uint32_t newDepth);
+    void Resize(uint32_t newWidth, uint32_t newHeight, uint32_t newDepth);
 
     
     void placeVoxelAdjacent(glm::vec3& rayOrigin, glm::vec3& rayDirection, float voxelSize, uint16_t value);
@@ -62,9 +63,5 @@ class VoxelManager {
 
     inline const bgfx::Memory* getVoxelData() {
         return mem;
-    }
-
-    inline glm::vec3& getLastVoxelPos() {
-        return lastVoxelPos;
     }
 };

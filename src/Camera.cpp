@@ -28,10 +28,10 @@ void Camera::HandelMouseMotion(uint32_t motionSate, float xrel, float yrel) {
     if (motionSate & SDL_BUTTON(SDL_BUTTON_RIGHT) && hasNoModifiers) {
         rotation.x += yrel * 0.01f * mouseSensitivity;
         rotation.y += xrel * -0.01f * mouseSensitivity;
-        if (rotation.x > glm::half_pi<float>()) {
-            rotation.x = glm::half_pi<float>();
-        } else if (rotation.x < -1.57f) {
-            rotation.x = -glm::half_pi<float>();
+        if (rotation.x > (glm::half_pi<float>()* 0.999f)) {
+            rotation.x = glm::half_pi<float>() * 0.999f;
+        } else if (rotation.x < -(glm::half_pi<float>() * 0.999f)) {
+            rotation.x = -(glm::half_pi<float>() * 0.999f);
         }
         if (rotation.y > 2 * glm::pi<float>()) {
             rotation.y = 0;
@@ -57,6 +57,7 @@ void Camera::RenderDebugWindow(bool* open) {
     ImGui::Text("CamF: %.1f, %.1f, %.1f", camF.x, camF.y, camF.z);
     ImGui::Text("CamR: %.1f, %.1f, %.1f", camR.x, camR.y, camR.z);
     ImGui::Text("CamU: %.1f, %.1f, %.1f", camU.x, camU.y, camU.z);
+    ImGui::Text("Rotation: %.3f, %.3f", rotation.x, rotation.y);
     ImGui::End();
 }
 

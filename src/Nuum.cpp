@@ -1,40 +1,26 @@
 #include "Nuum.hpp"
 
-#include "Vertex.hpp"
 #include "bgfx/bgfx.h"
+#include "bgfx/defines.h"
 #include "bgfx/platform.h"
 #include "bx/platform.h"
 #include "imgui.h"
 #include <SDL_syswm.h>
 #include <SDL_video.h>
 #include <iostream>
+#include <vector>
 
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_bgfx.h"
-#include "spirv/fs_screen.sc.bin.h"
-#include "spirv/vs_screen.sc.bin.h"
 #include "spirv/cs_ray.sc.bin.h"
 
 #if BX_PLATFORM_OSX
-#include "metal/vs_screen.sc.bin.h"
-#include "metal/fs_screen.sc.bin.h"
 #include "metal/cs_ray.sc.bin.h"
 #endif
 
 #if BX_PLATFORM_WINDOWS
-#include "dx11/vs_screen.sc.bin.h"
-#include "dx11/fs_screen.sc.bin.h"
 #include "dx11/cs_ray.sc.bin.h"
 #endif
-
-static const ScreenVertex screenVertices[] = {
-    {{-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},  //
-    {{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},   //
-    {{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}}, //
-    {{1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}}};
-
-static const uint16_t screenIndices[] = {0, 1, 2, //
-                                         2, 1, 3};
 
 Nuum::Nuum() {}
 
@@ -99,38 +85,10 @@ void Nuum::InitImGui(SDL_Window* window) {
 }
 
 void Nuum::InitShaders() {
-    screenVertexLayout.begin()
-        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
-        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
-        .end();
-    vbh = bgfx::createVertexBuffer(
-        bgfx::makeRef(screenVertices, sizeof(screenVertices)),
-        screenVertexLayout);
-    ibh = bgfx::createIndexBuffer(
-        bgfx::makeRef(screenIndices, sizeof(screenIndices)));
-
-#if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
-    program = bgfx::createProgram(
-        bgfx::createShader(bgfx::makeRef(vs_screen_spv, sizeof(vs_screen_spv))),
-        bgfx::createShader(bgfx::makeRef(fs_screen_spv, sizeof(fs_screen_spv))),
-        true);
-#elif BX_PLATFORM_WINDOWS
-    bgfx::ProgramHandle program = bgfx::createProgram(
-        bgfx::createShader(
-            bgfx::makeRef(vs_screen_dx11_spv, sizeof(vs_screen_dx11_spv))),
-        bgfx::createShader(
-            bgfx::makeRef(fs_screen_dx11_spv, sizeof(fs_screen_dx11_spv))),
-        true);
-#elif BX_PLATFORM_OSX
-    bgfx::ProgramHandle program = bgfx::createProgram(
-        bgfx::createShader(bgfx::makeRef(vs_screen_mtl, sizeof(vs_screen_mtl))),
-        bgfx::createShader(bgfx::makeRef(fs_screen_mtl, sizeof(fs_screen_mtl))),
-        true);
-#endif
-
-    outputTexture = bgfx::createTexture2D(width, height, false, 1,
-                                          bgfx::TextureFormat::RGBA32F,
-                                          BGFX_TEXTURE_COMPUTE_WRITE);
+    outputTexture = bgfx::createTexture2D(
+        uint16_t(width * 1.2f), uint16_t(height * 1.2f), false, 1,
+        bgfx::TextureFormat::RGBA8,
+        BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
 
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
     computeProgram = bgfx::createProgram(
@@ -154,12 +112,14 @@ void Nuum::InitShaders() {
 void Nuum::RenderViewport() {
     bgfx::setUniform(u_camMat, &glm::transpose(camera.GetViewMatrix())[0][0],
                      1);
-    bgfx::setUniform(u_gridSize, &gridSize);
+    auto voxelSize = voxelManager.getSize();
+    bgfx::setUniform(u_gridSize, &voxelSize[0], 1);
     bgfx::setUniform(u_camPos, &glm::vec4(camera.GetPosition(), 1.0f)[0]);
     bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
     bgfx::setTexture(1, voxelManager.getVoxelTextureUniform(),
                      voxelManager.getTextureHandle());
-    bgfx::dispatch(0, computeProgram, viewportSize.x, viewportSize.y, 1);
+    bgfx::dispatch(0, computeProgram, viewportSize.x * 1.2f,
+                   viewportSize.y * 1.2f, 1);
 }
 
 void Nuum::RenderViewportWindow() {
@@ -178,8 +138,9 @@ void Nuum::RenderViewportWindow() {
         viewportSize = newViewportSize;
         bgfx::destroy(outputTexture);
         outputTexture = bgfx::createTexture2D(
-            uint16_t(viewportSize.x), uint16_t(viewportSize.y), false, 1,
-            bgfx::TextureFormat::RGBA32F, BGFX_TEXTURE_COMPUTE_WRITE);
+            uint16_t(viewportSize.x * 1.2f), uint16_t(viewportSize.y * 1.2f),
+            false, 1, bgfx::TextureFormat::RGBA8,
+            BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
     }
 
     ImGui::Image(outputTexture.idx, viewportSize);
@@ -197,6 +158,52 @@ void Nuum::RenderViewportWindow() {
     ImGui::PopStyleVar();
 }
 
+void Nuum::RenderPaletteWindow() {
+    if (!openPaletteWindow) {
+        return;
+    }
+    ImGui::Begin("Palettes", &openPaletteWindow);
+    if (ImGui::BeginCombo("Palettes", "Select Palette",
+                          ImGuiComboFlags_WidthFitPreview)) {
+        for (uint32_t i = 0; i < palettes.size(); ++i) {
+            ImGui::PushID(i);
+            if (ImGui::Selectable(palettes[i].getName().c_str(),
+                                  selectedPaletteIndex == i)) {
+                selectedPaletteIndex = i;
+                voxelManager.setPalette(&palettes[selectedPaletteIndex]);
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    auto& colors = palettes[selectedPaletteIndex].getColors();
+
+    for (uint32_t i = 0; i < colors.size(); ++i) {
+        ImGui::PushID(i);
+        // no inputs, no label, alpha preview half, no tooltip
+        ImGui::ColorEdit4(std::to_string(i).c_str(), &colors[i][0],
+                          ImGuiColorEditFlags_NoInputs |
+                              ImGuiColorEditFlags_NoLabel |
+                              ImGuiColorEditFlags_AlphaPreviewHalf |
+                              ImGuiColorEditFlags_NoTooltip);
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(1)) {
+            selectedColorIndex = i;
+        }
+        ImGui::PopID();
+    }
+    // selected color
+    ImGui::Text("Selected Color: ");
+    ImGui::SameLine();
+    ImGui::ColorButton(
+        "Selected Color",
+        ImVec4(colors[selectedColorIndex][0], colors[selectedColorIndex][1],
+               colors[selectedColorIndex][2], colors[selectedColorIndex][3]),
+        ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel |
+            ImGuiColorEditFlags_AlphaPreviewHalf);
+
+    ImGui::End();
+}
+
 void Nuum::RenderDebugWindow() {
     if (!openDebugWindow) {
         return;
@@ -207,6 +214,9 @@ void Nuum::RenderDebugWindow() {
     ImGui::SliderFloat("Mouse Sensitivity", &camera.GetMouseSensitivity(), 0.1f,
                        10.0f);
     ImGui::InputFloat3("Grid Size", &gridSize[0]);
+    if (ImGui::Button("Resize")) {
+        voxelManager.Resize(gridSize[0], gridSize[1], gridSize[2]);
+    }
     ImGui::SliderFloat("Voxel Size", &gridSize[3], 0.1f, 10.0f);
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::Text("Mouse Position: %.1f, %.1f", io->MousePos.x, io->MousePos.y);
@@ -254,11 +264,14 @@ void Nuum::RenderDockspace() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
-            if (ImGui::MenuItem("Camera", nullptr, openCameraWindow)) {
+            if (ImGui::MenuItem("Camera", "C", openCameraWindow)) {
                 openCameraWindow = !openCameraWindow;
             }
-            if (ImGui::MenuItem("Debug", nullptr, openDebugWindow)) {
+            if (ImGui::MenuItem("Debug", "D", openDebugWindow)) {
                 openDebugWindow = !openDebugWindow;
+            }
+            if (ImGui::MenuItem("Palettes", "P", openPaletteWindow)) {
+                openPaletteWindow = !openPaletteWindow;
             }
             ImGui::EndMenu();
         }
@@ -290,6 +303,22 @@ void Nuum::HandleEvents() {
         // if imgui wants input skip the rest
         if (ImGui::IsAnyItemActive()) {
             continue;
+        }
+        // Handle keyboard input
+        if (event.type == SDL_KEYDOWN) {
+            if (event.key.keysym.sym == SDLK_q &&
+                SDL_GetModState() & KMOD_CTRL) {
+                running = false;
+            }
+            if (event.key.keysym.sym == SDLK_c) {
+                openCameraWindow = !openCameraWindow;
+            }
+            if (event.key.keysym.sym == SDLK_d) {
+                openDebugWindow = !openDebugWindow;
+            }
+            if (event.key.keysym.sym == SDLK_p) {
+                openPaletteWindow = !openPaletteWindow;
+            }
         }
         // Skip if not hovering viewport
         if (!isHoveringViewport) {
@@ -333,7 +362,11 @@ int Nuum::Init(int argc, char** argv) {
     viewport = ImGui::GetMainViewport();
 
     voxelManager.Init(16, 16, 16);
-    palettes.emplace_back("Default", 6);
+    std::vector<glm::vec4> colors = {
+        {1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 0.0f, 1.0f},
+        {1.0f, 0.5f, 0.5f, 1.0f}, {0.5f, 1.0f, 1.0f, 1.0f}};
+    palettes.emplace_back("Default", std::move(colors));
     voxelManager.setPalette(&palettes[0]);
 
     camera.Init();
@@ -355,7 +388,7 @@ void Nuum::Run() {
         RenderViewportWindow();
         camera.RenderDebugWindow(&openCameraWindow);
         RenderDebugWindow();
-        palettes[0].renderWindow();
+        RenderPaletteWindow();
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
@@ -373,9 +406,6 @@ void Nuum::Run() {
 
 void Nuum::Shutdown() {
     voxelManager.Destroy();
-    bgfx::destroy(program);
-    bgfx::destroy(ibh);
-    bgfx::destroy(vbh);
     bgfx::destroy(u_camPos);
     bgfx::destroy(u_camMat);
     bgfx::destroy(u_gridSize);

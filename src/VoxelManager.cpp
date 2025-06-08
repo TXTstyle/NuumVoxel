@@ -2,11 +2,13 @@
 #include "bgfx/bgfx.h"
 #include <cstdarg>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <functional>
 #include <iostream>
+#include <vector>
 
 VoxelManager::VoxelManager() {}
 
@@ -16,8 +18,6 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
     this->width = width;
     this->height = height;
     this->depth = depth;
-
-    voxelData.resize(width * height * depth, 1);
 
     // voxel data for 3D texture
     uint8_t* voxelArray =
@@ -31,13 +31,11 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
                     voxelArray[index + 1] = (uint8_t)(y * height + z); // G
                     voxelArray[index + 2] = (uint8_t)(z * depth + x);  // B
                     voxelArray[index + 3] = 255;                       // A
-                    voxelData[z * width * height + y * width + x] = 1;
                 } else {
                     voxelArray[index] = 0;     // R
                     voxelArray[index + 1] = 0; // G
                     voxelArray[index + 2] = 0; // B
                     voxelArray[index + 3] = 0; // A
-                    voxelData[z * width * height + y * width + x] = 0;
                 }
             }
         }
@@ -69,19 +67,14 @@ void VoxelManager::Destroy() {
         textureHandle.idx = bgfx::kInvalidHandle;
     }
     mem = nullptr;
-    voxelData.clear();
 }
 
 void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z,
                             uint16_t value) {
-    if (x == lastVoxelPos.x && y == lastVoxelPos.y && z == lastVoxelPos.z) {
-        return;
-    }
     if (x >= width || y >= height || z >= depth) {
         return; // Out of bounds
     }
     int index = z * width * height + y * width + x;
-    voxelData[index] = value;
 
     // Create a small memory block for the update
     auto paletteColor = palette->getColors()[value];
@@ -94,8 +87,6 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z,
               << " to color: " << +voxColor[0] << ", " << +voxColor[1] << ", "
               << +voxColor[2] << ", " << +voxColor[3] << std::endl;
 
-    lastVoxelPos = glm::vec3(x, y, z);
-
     const bgfx::Memory* updateMem = bgfx::copy(voxColor, sizeof(voxColor));
 
     // Update just the one voxel in the 3D texture
@@ -107,11 +98,55 @@ uint16_t VoxelManager::getVoxel(uint32_t x, uint32_t y, uint32_t z) const {
         return 0; // Out of bounds
     }
     int index = z * width * height + y * width + x;
-    return voxelData[index];
+    return 0; // FIXME: Return the actual voxel value
 }
 
-void VoxelManager::resize(uint32_t newWidth, uint32_t newHeight,
-                          uint32_t newDepth) {}
+void VoxelManager::Resize(uint32_t newWidth, uint32_t newHeight,
+                          uint32_t newDepth) {
+    if (newWidth == width && newHeight == height && newDepth == depth) {
+        return; // No change in size
+    }
+
+    // Copy 3d image data to a new image memory block
+    const bgfx::Memory* newMem =
+        bgfx::alloc(newWidth * newHeight * newDepth * 4 * sizeof(uint8_t));
+    if (!newMem) {
+        std::cerr << "Failed to allocate memory for resized voxel texture."
+                  << std::endl;
+        return;
+    }
+    // Fill the new memory with zeros
+    std::memset(newMem->data, 0,
+                newWidth * newHeight * newDepth * 4 * sizeof(uint8_t));
+    // Copy existing voxel data to the new memory block
+    for (uint32_t z = 0; z < std::min(depth, newDepth); ++z) {
+        for (uint32_t y = 0; y < std::min(height, newHeight); ++y) {
+            for (uint32_t x = 0; x < std::min(width, newWidth); ++x) {
+                int oldIndex = z * width * height + y * width + x;
+                int newIndex =
+                    z * newWidth * newHeight + y * newWidth + x;
+                std::memcpy(&newMem->data[newIndex * 4],
+                            &mem->data[oldIndex * 4], 4 * sizeof(uint8_t));
+            }
+        }
+    }
+
+    // Destroy the old texture and create a new one with the new size
+    bgfx::destroy(textureHandle);
+    textureHandle = bgfx::createTexture3D(
+        newWidth, newHeight, newDepth, false, bgfx::TextureFormat::RGBA8, 0,
+        nullptr);
+
+    // Update the new texture with the resized memory
+    bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, newWidth, newHeight,
+                          newDepth, newMem);
+
+    mem = newMem; // Update the voxel data pointer
+    width = newWidth;
+    height = newHeight;
+    depth = newDepth;
+
+}
 
 // Type for voxel sampler: returns true if voxel is hit (non-empty)
 using VoxelSampler = std::function<bool(const glm::ivec3& voxel)>;
@@ -319,9 +354,10 @@ void VoxelManager::raycastSetVoxel(glm::vec3& rayOrigin,
             // Check if the voxel is solid (non-empty)
             uint32_t index =
                 voxel.x + voxel.y * width + voxel.z * width * height;
-            if (index >= voxelData.size())
-                return false;
-            return voxelData[index] != 0;
+            // if (index >= voxelData.size())
+            //     return false;
+            // return voxelData[index] != 0;
+            return true;
         },
         hitVoxel, hitPoint, hitNormal);
 
