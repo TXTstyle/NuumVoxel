@@ -92,11 +92,11 @@ void main() {
     vec3 tMax = abs(safeDiv(voxelBoundary - pos, rayDir));
 
     // Debug visualization
-    // #if 0
-    // // Show ray entry points (useful for debugging)
-    // imageStore(u_outputImage, pixelCoords, vec4(normalize(pos - u_volumeMin) * 0.5 + 0.5, 1.0));
-    // return;
-    // #endif
+#if 0
+    // Show ray entry points (useful for debugging)
+    imageStore(u_outputImage, pixelCoords, vec4(normalize(pos - u_volumeMin) * 0.5 + 0.5, 1.0));
+    return;
+#endif
 
     // Ray marching through the grid
     const int maxSteps = 256;
@@ -108,12 +108,12 @@ void main() {
 
         // Sample voxel data
         vec3 texCoord = (vec3(voxel) + vec3(0.5)) / u_voxelGridSize;
-        vec4 voxelValue = texture3D(s_voxelTexture, texCoord);
+        float voxelValue = texture3D(s_voxelTexture, texCoord);
 
         // If we hit a solid voxel, render it
-        if (voxelValue.a > 0.1)
+        if (voxelValue >= 0.1)
         {
-            imageStore(u_outputImage, pixelCoords, vec4(voxelValue.rgb, 1.0));
+            imageStore(u_outputImage, pixelCoords, vec4(voxelValue, voxelValue, voxelValue, 1.0));
             return;
         }
 

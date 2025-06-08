@@ -20,38 +20,25 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
     this->depth = depth;
 
     // voxel data for 3D texture
-    uint8_t* voxelArray =
-        (uint8_t*)malloc(width * height * depth * 4 * sizeof(uint8_t));
+    float* voxelArray =
+        (float*)calloc(width * height * depth, sizeof(float));
     for (int z = 0; z < depth; ++z) {
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
-                int index = (z * height * width + y * width + x) * 4;
-                if (z <= 4) {
-                    voxelArray[index] = (uint8_t)(x * width + y);      // R
-                    voxelArray[index + 1] = (uint8_t)(y * height + z); // G
-                    voxelArray[index + 2] = (uint8_t)(z * depth + x);  // B
-                    voxelArray[index + 3] = 255;                       // A
-                } else {
-                    voxelArray[index] = 0;     // R
-                    voxelArray[index + 1] = 0; // G
-                    voxelArray[index + 2] = 0; // B
-                    voxelArray[index + 3] = 0; // A
-                }
+                int index = (z * height * width + y * width + x); // R32F
+                voxelArray[index] = (index % 7)/ 6.0f;
             }
         }
     }
 
-    mem = bgfx::copy(voxelArray, width * height * depth * 4);
+    mem = bgfx::copy(voxelArray, width * height * depth * sizeof(float));
     if (!mem) {
         std::cerr << "Failed to allocate memory for voxel texture."
                   << std::endl;
         return;
     }
-    // free
-    free(voxelArray);
-    // memcpy(mem->data, voxelArray, width * height * depth * 4);
     textureHandle = bgfx::createTexture3D(
-        width, height, depth, false, bgfx::TextureFormat::RGBA8, 0, nullptr);
+        width, height, depth, false, bgfx::TextureFormat::R32F, 0, nullptr);
     bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, width, height, depth, mem);
     s_voxelTexture =
         bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
