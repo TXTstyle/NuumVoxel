@@ -112,7 +112,9 @@ void Nuum::RenderViewport() {
     bgfx::setUniform(u_camMat, &glm::transpose(camera.GetViewMatrix())[0][0],
                      1);
     auto voxelSize = voxelManager.getSize();
-    bgfx::setUniform(u_gridSize, &voxelSize[0], 1);
+    glm::vec4 grid =
+        glm::vec4(voxelSize.x, voxelSize.y, voxelSize.z, gridSize[3]);
+    bgfx::setUniform(u_gridSize, &grid[0], 1);
     bgfx::setUniform(u_camPos, &glm::vec4(camera.GetPosition(), 1.0f)[0]);
     bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
     bgfx::setTexture(1, voxelManager.getVoxelTextureUniform(),

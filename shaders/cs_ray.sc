@@ -2,7 +2,7 @@ $ input a_texcoord0
 
 #include <bgfx_compute.sh>
 
-IMAGE2D_WO(u_outputImage, rgba8, 0); // output image at binding 0
+IMAGE2D_WO ( u_outputImage, rgba8, 0 ) ; // output image at binding 0
 SAMPLER3D(s_voxelTexture, 1); // 3D texture at binding 1
 BUFFER_RO(paletteBuffer, vec4, 2); // palette buffer at binding 2
 
@@ -28,9 +28,9 @@ void main() {
     vec3 camPos = u_camPos.xyz;
 
     // Volume bounds and grid size from uniforms
-    vec3 u_volumeMin = vec3(-1.0, 0.0, -1.0) * u_gridSize.w; // volume min bounds
-    vec3 u_volumeMax = vec3(1.0, 2.0, 1.0) * u_gridSize.w; // volume max bounds
-    vec3 u_voxelGridSize = u_gridSize.xyz; // voxel grid size
+    vec3 gridSize = u_gridSize.xyz; // voxel grid size
+    vec3 u_volumeMin = vec3(-1.0, 0.0, -1.0) * gridSize * 0.0625 * u_gridSize.w; // volume min bounds
+    vec3 u_volumeMax = vec3(1.0, 2.0, 1.0) * gridSize * 0.0625 * u_gridSize.w; // volume max bounds
 
     // Calculate screen coordinates and ray direction
     float fov = 45.0; // Field of view
@@ -42,9 +42,6 @@ void main() {
     uv.y *= scale;
     vec3 rayDirCam = normalize(vec3(uv, -1.0)); // Ray direction in camera space
     vec3 rayDir = normalize(u_camMat * rayDirCam); // Ray direction in world space
-
-    // imageStore(u_outputImage, pixelCoords, vec4(rayDir * 0.5 + 0.5, 1.0));
-    // return;
 
     // Apply epsilon to avoid floating point precision errors
     const float epsilon = 1e-4;
@@ -61,7 +58,7 @@ void main() {
     // Early exit if ray doesn't hit volume
     const vec3 fromColor = vec3(0.16, 0.29, 0.48);
     const vec3 toColor = vec3_splat(0.058);
-    float mixFactor = smoothstep(0.0, 1.0, 1 - (vec2(pixelCoords)/vec2(imageSize)).y);
+    float mixFactor = smoothstep(0.0, 1.0, 1 - (vec2(pixelCoords) / vec2(imageSize)).y);
     const vec4 bgColor = vec4(mix(toColor, fromColor, mixFactor), 1.0);
     if (tmax <= tmin)
     {
@@ -73,7 +70,7 @@ void main() {
     vec3 pos = camPos + rayDir * (tmin + epsilon);
 
     // Calculate voxel size
-    vec3 voxelSize = (u_volumeMax - u_volumeMin) / u_voxelGridSize;
+    vec3 voxelSize = (u_volumeMax - u_volumeMin) / gridSize;
 
     // Calculate initial voxel indices
     ivec3 voxel = ivec3(floor((pos - u_volumeMin) / voxelSize));
@@ -93,22 +90,22 @@ void main() {
     vec3 tMax = abs(safeDiv(voxelBoundary - pos, rayDir));
 
     // Debug visualization
-#if 0
+    #if 0
     // Show ray entry points (useful for debugging)
     imageStore(u_outputImage, pixelCoords, vec4(normalize(pos - u_volumeMin) * 0.5 + 0.5, 1.0));
     return;
-#endif
+    #endif
 
     // Ray marching through the grid
     const int maxSteps = 256;
     for (int i = 0; i < maxSteps; ++i)
     {
         // Check if current voxel is inside the grid
-        if (any(lessThan(voxel, ivec3(0))) || any(greaterThanEqual(voxel, ivec3(u_voxelGridSize))))
+        if (any(lessThan(voxel, ivec3(0))) || any(greaterThanEqual(voxel, ivec3(gridSize))))
             break;
 
         // Sample voxel data
-        vec3 texCoord = (vec3(voxel) + vec3(0.5)) / u_voxelGridSize;
+        vec3 texCoord = (vec3(voxel) + vec3(0.5)) / gridSize;
         float voxelValue = texture3D(s_voxelTexture, texCoord);
 
         // If we hit a solid voxel, render it
@@ -136,6 +133,37 @@ void main() {
         {
             voxel.z += step.z;
             tMax.z += deltaT.z;
+        }
+    }
+
+    // Ray-plane intersection, with xz plane grid visualization
+    const float cellSize = 8.0f * 1/u_gridSize.w; // Number of grid cells per unit
+    const float u_lineWidth = 0.025f; // Width of the grid lines
+    const float planeY = 0.0;
+    float denom = rayDir.y;
+    if (abs(denom) > epsilon) {
+        float tPlane = (planeY - camPos.y) / denom;
+
+        if (tPlane >= tmin && tPlane <= tmax) {
+            vec3 intersectionPoint = camPos + tPlane * rayDir;
+
+            // Compute grid position in XZ plane
+            vec2 gridPos = intersectionPoint.xz * cellSize;
+
+            // Compute the distance to the nearest grid line (using fract)
+            vec2 gridLineDist = abs(fract(gridPos - 0.5) - 0.5);
+
+            // Minimum distance to grid line on either axis
+            float lineDist = min(gridLineDist.x, gridLineDist.y);
+
+            // Smooth line thickness
+            float linee = smoothstep(0.0, u_lineWidth, lineDist);
+
+            // Lines are white and background is bgcolor
+            vec3 color = mix(vec3(1.0), bgColor.rgb, linee);
+
+            imageStore(u_outputImage, pixelCoords, vec4(vec3(color), 1.0));
+            return;
         }
     }
 

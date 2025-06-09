@@ -32,7 +32,12 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 int index = (z * height * width + y * width + x);
-                voxelArray[index] = (index % 17) / 255.0f; // R32F
+                if (x > 8) {
+                    voxelArray[index] = (index % 17) / 255.0f; // R32F
+                }
+                else {
+                    voxelArray[index] = 0.0f;
+                }
             }
         }
     }
