@@ -1,14 +1,21 @@
 #include "VoxelManager.hpp"
 #include "bgfx/bgfx.h"
-#include <cstdarg>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <functional>
 #include <iostream>
 #include <vector>
+#include <bx/bx.h>
+
+#include "bgfx/defines.h"
+#include "spirv/cs_resize.sc.bin.h"
+#if BX_PLATFORM_WINDOWS
+#include "dx11/cs_ray_dx11.sc.bin.h"
+#elif BX_PLATFORM_OSX
+#include "metal/cs_ray_mtl.sc.bin.h"
+#endif
 
 VoxelManager::VoxelManager() {}
 
@@ -20,13 +27,12 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
     this->depth = depth;
 
     // voxel data for 3D texture
-    float* voxelArray =
-        (float*)calloc(width * height * depth, sizeof(float));
+    float* voxelArray = (float*)calloc(width * height * depth, sizeof(float));
     for (int z = 0; z < depth; ++z) {
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
-                int index = (z * height * width + y * width + x); // R32F
-                voxelArray[index] = (index % 17)/ 255.0f;
+                int index = (z * height * width + y * width + x);
+                voxelArray[index] = (index % 17) / 255.0f; // R32F
             }
         }
     }
@@ -42,6 +48,21 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth) {
     bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, width, height, depth, mem);
     s_voxelTexture =
         bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
+    // Create a compute shader program for resizing
+#if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
+    resizeProgram = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(cs_resize_spv, sizeof(cs_resize_spv))),
+        true);
+#elif BX_PLATFORM_WINDOWS
+    resizeProgram =
+        bgfx::createProgram(bgfx::createShader(bgfx::makeRef(
+                                cs_resize_dx11, sizeof(cs_resize_dx11))),
+                            true);
+#elif BX_PLATFORM_OSX
+    resizeProgram = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(cs_resize_mtl, sizeof(cs_resize_mtl))),
+        true);
+#endif
 }
 
 void VoxelManager::Destroy() {
@@ -53,6 +74,7 @@ void VoxelManager::Destroy() {
         bgfx::destroy(textureHandle);
         textureHandle.idx = bgfx::kInvalidHandle;
     }
+    bgfx::destroy(resizeProgram);
     mem = nullptr;
 }
 
@@ -93,45 +115,24 @@ void VoxelManager::Resize(uint32_t newWidth, uint32_t newHeight,
         return; // No change in size
     }
 
-    // Copy 3d image data to a new image memory block
-    const bgfx::Memory* newMem =
-        bgfx::alloc(newWidth * newHeight * newDepth * 4 * sizeof(uint8_t));
-    if (!newMem) {
-        std::cerr << "Failed to allocate memory for resized voxel texture."
-                  << std::endl;
-        return;
-    }
-    // Fill the new memory with zeros
-    std::memset(newMem->data, 0,
-                newWidth * newHeight * newDepth * 4 * sizeof(uint8_t));
-    // Copy existing voxel data to the new memory block
-    for (uint32_t z = 0; z < std::min(depth, newDepth); ++z) {
-        for (uint32_t y = 0; y < std::min(height, newHeight); ++y) {
-            for (uint32_t x = 0; x < std::min(width, newWidth); ++x) {
-                int oldIndex = z * width * height + y * width + x;
-                int newIndex =
-                    z * newWidth * newHeight + y * newWidth + x;
-                std::memcpy(&newMem->data[newIndex * 4],
-                            &mem->data[oldIndex * 4], 4 * sizeof(uint8_t));
-            }
-        }
-    }
+    // Create a new texture with the new size
+    bgfx::TextureHandle newTexture =
+        bgfx::createTexture3D(newWidth, newHeight, newDepth, false,
+                              bgfx::TextureFormat::R32F, BGFX_TEXTURE_COMPUTE_WRITE, nullptr);
 
-    // Destroy the old texture and create a new one with the new size
+    // Dispatch the compute shader to resize the voxel data
+    bgfx::setImage(0, newTexture, 0, bgfx::Access::Write);
+    bgfx::setImage(1, textureHandle, 0, bgfx::Access::Read);
+    bgfx::dispatch(1, resizeProgram, newWidth, newHeight, newDepth);
+
+    // Destroy the old texture and update the handle
     bgfx::destroy(textureHandle);
-    textureHandle = bgfx::createTexture3D(
-        newWidth, newHeight, newDepth, false, bgfx::TextureFormat::RGBA8, 0,
-        nullptr);
+    textureHandle = newTexture;
 
-    // Update the new texture with the resized memory
-    bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, newWidth, newHeight,
-                          newDepth, newMem);
 
-    mem = newMem; // Update the voxel data pointer
     width = newWidth;
     height = newHeight;
     depth = newDepth;
-
 }
 
 // Type for voxel sampler: returns true if voxel is hit (non-empty)

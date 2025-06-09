@@ -94,11 +94,11 @@ void Nuum::InitShaders() {
         bgfx::createShader(bgfx::makeRef(cs_ray_spv, sizeof(cs_ray_spv))),
         true);
 #elif BX_PLATFORM_WINDOWS
-    bgfx::ProgramHandle computeProgram = bgfx::createProgram(
+    computeProgram = bgfx::createProgram(
         bgfx::createShader(bgfx::makeRef(cs_ray_dx11, sizeof(cs_ray_dx11))),
         true);
 #elif BX_PLATFORM_OSX
-    bgfx::ProgramHandle computeProgram = bgfx::createProgram(
+    computeProgram = bgfx::createProgram(
         bgfx::createShader(bgfx::makeRef(cs_ray_mtl, sizeof(cs_ray_mtl))),
         true);
 #endif
@@ -295,10 +295,10 @@ int Nuum::Init(int argc, char** argv) {
         return 1;
     }
 
-    // SDL_DisplayMode displayMode;
-    // SDL_GetDesktopDisplayMode(0, &displayMode);
-    // width = displayMode.w * 0.6f;
-    // height = displayMode.h * 0.6f;
+    SDL_DisplayMode displayMode;
+    SDL_GetDesktopDisplayMode(0, &displayMode);
+    width = width > (displayMode.w * 0.6f) ? displayMode.w * 0.6f : width;
+    height = height > (displayMode.h * 0.6f) ? displayMode.h * 0.6f : height;
     SDL_Window* window =
         SDL_CreateWindow("Nuum", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                          width, height, SDL_WINDOW_RESIZABLE);
@@ -356,6 +356,7 @@ void Nuum::Run() {
 
 void Nuum::Shutdown() {
     voxelManager.Destroy();
+    paletteManager.Destroy();
     bgfx::destroy(u_camPos);
     bgfx::destroy(u_camMat);
     bgfx::destroy(u_gridSize);

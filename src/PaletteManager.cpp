@@ -8,10 +8,7 @@ PaletteManager::PaletteManager() {}
 PaletteManager::~PaletteManager() {}
 
 void PaletteManager::Init() {
-    // u_paletteSize =
-    //     bgfx::createUniform("u_paletteSize", bgfx::UniformType::);
-
-    // Initialize with a default palette
+    // Initialize with a default palette, i.e; "pico-8"
     std::vector<glm::vec4> colors = {
         {0.000, 0.000, 0.000, 1.0}, {0.114, 0.169, 0.325, 1.0},
         {0.494, 0.145, 0.325, 1.0}, {0.000, 0.529, 0.318, 1.0},
@@ -30,6 +27,11 @@ void PaletteManager::Init() {
         .end();
     paletteBuffer = bgfx::createDynamicVertexBuffer(
         colors.size(), paletteLayout, BGFX_BUFFER_COMPUTE_READ);
+}
+
+void PaletteManager::Destroy() {
+    bgfx::destroy(paletteBuffer);
+    palettes.clear();
 }
 
 void PaletteManager::RenderWindow(bool* open) {
@@ -52,7 +54,7 @@ void PaletteManager::RenderWindow(bool* open) {
     }
     auto& colors = palettes[currentPaletteIndex].getColors();
 
-    for (uint32_t i = 0; i < colors.size(); ++i) {
+    for (uint32_t i = 1; i < colors.size(); i++) {
         ImGui::PushID(i);
         // no inputs, no label, alpha preview half, no tooltip
         ImGui::ColorEdit4(std::to_string(i).c_str(), &colors[i][0],

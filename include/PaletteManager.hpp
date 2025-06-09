@@ -10,7 +10,6 @@ private:
     uint32_t currentPaletteIndex;
     uint32_t paletteSize;
 
-    bgfx::UniformHandle u_paletteSize;
     bgfx::DynamicVertexBufferHandle paletteBuffer;
     bgfx::VertexLayout paletteLayout;
 
@@ -24,6 +23,7 @@ public:
     void UpdateColorData();
 
     void Init();
+    void Destroy();
     void AddPalette(const Palette& palette);
     void AddPalette(const std::string& name, const std::vector<glm::vec3> colors);
     void RemovePalette(u_int32_t index);

@@ -2,7 +2,7 @@ $ input a_texcoord0
 
 #include <bgfx_compute.sh>
 
-IMAGE2D_WO ( u_outputImage, rgba32f, 0 ) ; // output image at binding 0
+IMAGE2D_WO(u_outputImage, rgba8, 0); // output image at binding 0
 SAMPLER3D(s_voxelTexture, 1); // 3D texture at binding 1
 BUFFER_RO(paletteBuffer, vec4, 2); // palette buffer at binding 2
 
@@ -112,10 +112,10 @@ void main() {
         float voxelValue = texture3D(s_voxelTexture, texCoord);
 
         // If we hit a solid voxel, render it
-        if (voxelValue > 0.003)
+        if (voxelValue > 0.003) // 1/255
         {
             // Fetch color from palette buffer
-            float index = voxelValue * 255.0; // Assuming voxel values are in [0, 1]
+            float index = voxelValue * 255.0; // Voxel values are in [0, 1]
             vec4 color = paletteBuffer[int(index)];
             imageStore(u_outputImage, pixelCoords, color);
             return;

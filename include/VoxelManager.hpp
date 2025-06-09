@@ -2,7 +2,6 @@
 
 #include "Palette.hpp"
 #include <cstdint>
-#include <vector>
 #include <bgfx/bgfx.h>
 #include <glm/glm.hpp>
 
@@ -21,6 +20,8 @@ class VoxelManager {
     const bgfx::Memory* mem;
     bgfx::TextureHandle textureHandle;
     bgfx::UniformHandle s_voxelTexture;
+
+    bgfx::ProgramHandle resizeProgram;
 
   public:
     VoxelManager();

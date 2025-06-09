@@ -25,7 +25,7 @@
 | Action       | Key / Mouse        |
 | ------------ | ------------------ |
 | Orbit camera | Right mouse        |
-| Pan camera   | Ctrl + Right mouse |
+| Pan camera   | Shift + Right mouse|
 | Zoom         | Scroll wheel       |
 | Add voxel    | Left click         |
 | Remove voxel | Shift + Left click |

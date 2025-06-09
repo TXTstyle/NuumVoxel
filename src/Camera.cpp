@@ -1,6 +1,7 @@
 #include "Camera.hpp"
 #include "glm/gtc/constants.hpp"
 
+#include <SDL_keycode.h>
 #include <cstdint>
 #include <imgui.h>
 #include <SDL.h>
@@ -41,7 +42,7 @@ void Camera::HandelMouseMotion(uint32_t motionSate, float xrel, float yrel) {
         shouldUpdate = true;
     }
     if (motionSate & SDL_BUTTON(SDL_BUTTON_RIGHT) &&
-        SDL_GetModState() & KMOD_CTRL) {
+        SDL_GetModState() & KMOD_SHIFT) {
         glm::vec3 mouseDirWorld = camR * -xrel + camU * yrel;
         target += mouseDirWorld * 0.001f * radius;
         shouldUpdate = true;
