@@ -92,6 +92,7 @@ bool Serializer::Import() {
     // Create a new palette with the read data
     Palette palette(std::move(paletteName), std::move(colors));
     palette.setSelectedColorIndex(selectedColorIndex);
+    paletteManager->ClearPalettes(); // Clear existing palettes
     auto index = paletteManager->AddPalette(std::move(palette));
     paletteManager->SetCurrentPalette(index);
     voxelManager->setPalette(&paletteManager->GetCurrentPalette());

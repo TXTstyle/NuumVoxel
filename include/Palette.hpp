@@ -20,6 +20,20 @@ class Palette {
     Palette& operator=(const Palette&) = default;
     ~Palette();
 
+    inline uint16_t AddColor(const glm::vec4& color) {
+        colors.push_back(color);
+        return colors.size() - 1;
+    }
+
+    inline void RemoveColor(uint16_t index) {
+        if (index < colors.size()) {
+            colors.erase(colors.begin() + index);
+            if (selectedColorIndex >= colors.size()) {
+                selectedColorIndex = colors.size() - 1;
+            }
+        }
+    }
+
     inline void setSelectedColorIndex(uint16_t index) {
         if (index < colors.size()) {
             selectedColorIndex = index;
@@ -28,6 +42,10 @@ class Palette {
     inline std::string& getName() { return name; }
     inline const std::string& getName() const { return name; }
     inline std::vector<glm::vec4>& getColors() { return colors; }
-    inline const glm::vec4& getSelectedColor() const { return colors[selectedColorIndex]; }
-    inline const uint16_t getSelectedIndex() const { return selectedColorIndex; }
+    inline const glm::vec4& getSelectedColor() const {
+        return colors[selectedColorIndex];
+    }
+    inline const uint16_t getSelectedIndex() const {
+        return selectedColorIndex;
+    }
 };

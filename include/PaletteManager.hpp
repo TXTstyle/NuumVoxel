@@ -8,11 +8,12 @@ class PaletteManager {
 private:
     std::vector<Palette> palettes;
     uint32_t currentPaletteIndex;
-    uint32_t oldPaletteIndex;
-    uint32_t paletteSize;
+     int32_t paletteSize;
 
     bgfx::DynamicVertexBufferHandle paletteBuffer;
     bgfx::VertexLayout paletteLayout;
+
+    void AddDefualtPalette();
 
 public:
     PaletteManager();
@@ -32,5 +33,10 @@ public:
 
     inline Palette& GetCurrentPalette() {
         return palettes[currentPaletteIndex];
+    }
+    inline void ClearPalettes() {
+        palettes.clear();
+        currentPaletteIndex = 0;
+        paletteSize = 0;
     }
 };
