@@ -35,7 +35,15 @@ class VoxelManager {
 
     void setVoxel(uint32_t x, uint32_t y, uint32_t z, uint16_t value);
     uint16_t getVoxel(uint32_t x, uint32_t y, uint32_t z) const;
-    glm::vec4 getSize() const { return glm::vec4(width, height, depth, 1.0f); }
+    const glm::vec4 getSize() const { return glm::vec4(width, height, depth, 1.0f); }
+    inline void setSize(uint32_t newWidth, uint32_t newHeight,
+                        uint32_t newDepth) {
+        width = newWidth;
+        height = newHeight;
+        depth = newDepth;
+    }
+    void newVoxelData(std::vector<uint8_t>& newVoxelData, uint32_t w,
+                      uint32_t h, uint32_t d);
 
     // void raycastSetVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection, float
     // voxelSize,
@@ -54,6 +62,7 @@ class VoxelManager {
                       float voxelSize, uint16_t value);
 
     inline void setPalette(Palette* newPalette) { palette = newPalette; }
+    inline Palette* getPalette() { return palette; }
 
     inline bgfx::TextureHandle& getTextureHandle() { return textureHandle; }
 

@@ -1,6 +1,7 @@
 #include "PaletteManager.hpp"
 #include <bgfx/bgfx.h>
 #include <imgui.h>
+#include <imgui_stdlib.h>
 #include <vector>
 
 PaletteManager::PaletteManager() {}
@@ -52,8 +53,10 @@ void PaletteManager::RenderWindow(bool* open) {
         }
         ImGui::EndCombo();
     }
-    auto& colors = palettes[currentPaletteIndex].getColors();
+    ImGui::InputText("Palette Name",
+                          &palettes[currentPaletteIndex].getName());
 
+    auto& colors = GetCurrentPalette().getColors();
     for (uint32_t i = 1; i < colors.size(); i++) {
         ImGui::PushID(i);
         // no inputs, no label, alpha preview half, no tooltip
@@ -84,10 +87,7 @@ void PaletteManager::RenderWindow(bool* open) {
 }
 
 void PaletteManager::UpdateColorData() {
-    // auto paletteSize = static_cast<uint32_t>(currentPalette.size());
-    // bgfx::setUniform(u_paletteSize, &paletteSize);
-    std::vector<glm::vec4>& currentPalette =
-        palettes[currentPaletteIndex].getColors();
+    std::vector<glm::vec4>& currentPalette = GetCurrentPalette().getColors();
 
     if (!bgfx::isValid(paletteBuffer) || currentPalette.size() != paletteSize) {
         if (bgfx::isValid(paletteBuffer)) {
@@ -100,16 +100,27 @@ void PaletteManager::UpdateColorData() {
     }
 
     bgfx::update(paletteBuffer, 0,
-                 bgfx::copy(currentPalette.data(),
+                 bgfx::makeRef(currentPalette.data(),
                             currentPalette.size() * sizeof(glm::vec4)));
     bgfx::setBuffer(2, paletteBuffer, bgfx::Access::Read);
 }
 
-void PaletteManager::AddPalette(const Palette& palette) {}
+size_t PaletteManager::AddPalette(Palette palette) {
+    palettes.push_back(std::move(palette));
+    return palettes.size() - 1;
+}
 
-void PaletteManager::AddPalette(const std::string& name,
-                                const std::vector<glm::vec3> colors) {}
+size_t PaletteManager::AddPalette(std::string name,
+                                std::vector<glm::vec4> colors) {
+    palettes.emplace_back(std::move(name), std::move(colors));
+    return palettes.size() - 1;
+}
 
-void PaletteManager::RemovePalette(u_int32_t index) {}
+void PaletteManager::RemovePalette(size_t index) {}
 
-void PaletteManager::SetCurrentPalette(u_int32_t index) {}
+void PaletteManager::SetCurrentPalette(size_t index) {
+    if (index < palettes.size() && index != currentPaletteIndex) {
+        oldPaletteIndex = currentPaletteIndex;
+        currentPaletteIndex = index;
+    }
+}

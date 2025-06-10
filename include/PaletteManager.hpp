@@ -8,6 +8,7 @@ class PaletteManager {
 private:
     std::vector<Palette> palettes;
     uint32_t currentPaletteIndex;
+    uint32_t oldPaletteIndex;
     uint32_t paletteSize;
 
     bgfx::DynamicVertexBufferHandle paletteBuffer;
@@ -24,9 +25,12 @@ public:
 
     void Init();
     void Destroy();
-    void AddPalette(const Palette& palette);
-    void AddPalette(const std::string& name, const std::vector<glm::vec3> colors);
-    void RemovePalette(u_int32_t index);
-    void SetCurrentPalette(u_int32_t index);
+    size_t AddPalette(Palette palette);
+    size_t AddPalette(std::string name, std::vector<glm::vec4> colors);
+    void RemovePalette(size_t index);
+    void SetCurrentPalette(size_t index);
 
+    inline Palette& GetCurrentPalette() {
+        return palettes[currentPaletteIndex];
+    }
 };

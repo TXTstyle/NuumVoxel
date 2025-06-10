@@ -1,8 +1,10 @@
 #include "Serializer.hpp"
+#include "Palette.hpp"
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <vector>
 
 Serializer::Serializer() {}
@@ -23,6 +25,18 @@ bool Serializer::Import() {
         errorText = "Failed to open file for reading: " + importPath;
         return 1;
     }
+    // Read the version number
+    uint16_t version;
+    file.read(reinterpret_cast<char*>(&version), sizeof(uint16_t));
+    if (file.fail()) {
+        errorText = "Failed to read version from file: " + importPath;
+        return 1;
+    }
+    if (version != 1) {
+        errorText = "Unsupported file version: " + std::to_string(version);
+        file.close();
+        return 1;
+    }
 
     // Read dimensions from the file
     uint16_t w, h, d;
@@ -31,24 +45,62 @@ bool Serializer::Import() {
     file.read(reinterpret_cast<char*>(&w), sizeof(uint16_t));
 
     bool validDimensions =
-        (w >= 0 && h >= 0 && d >= 0) && (w < 65535 && h < 65535 && d < 65535);
+        (w > 0 && h > 0 && d > 0) && (w < 65535 && h < 65535 && d < 65535);
     if (file.fail() || !validDimensions) {
         errorText = "Failed to read dimensions from file: " + importPath;
         return 1;
     }
 
-    // Set the dimensions
-    *width = w;
-    *height = h;
-    *depth = d;
+    // Read palette data from the file
+    std::string paletteName;
+    size_t nameLength;
+    file.read(reinterpret_cast<char*>(&nameLength), sizeof(size_t));
+    if (file.fail() || nameLength == 0) {
+        errorText =
+            "Failed to read palette name length from file: " + importPath;
+        return 1;
+    }
+    paletteName.resize(nameLength);
+    file.read(paletteName.data(), nameLength);
+    if (file.fail()) {
+        errorText = "Failed to read palette name from file: " + importPath;
+        return 1;
+    }
+    uint16_t selectedColorIndex;
+    file.read(reinterpret_cast<char*>(&selectedColorIndex), sizeof(uint16_t));
+    if (file.fail()) {
+        errorText =
+            "Failed to read selected color index from file: " + importPath;
+        return 1;
+    }
+    uint16_t colorCount;
+    file.read(reinterpret_cast<char*>(&colorCount), sizeof(uint16_t));
+    if (file.fail() || colorCount == 0) {
+        errorText = "Failed to read color count from file: " + importPath;
+        return 1;
+    }
+    std::vector<glm::vec4> colors(colorCount);
+    for (uint16_t i = 0; i < colorCount; i++) {
+        file.read(reinterpret_cast<char*>(&colors[i]), sizeof(glm::vec4));
+        if (file.fail()) {
+            errorText = "Failed to read color" + std::to_string(i) +
+                        " from file: " + importPath;
+            return 1;
+        }
+    }
 
-    // Calculate the size of the voxel data
-    voxelData->clear();
-    size_t voxelSize = w * h * d;
-    voxelData->resize(voxelSize);
+    // Create a new palette with the read data
+    Palette palette(std::move(paletteName), std::move(colors));
+    palette.setSelectedColorIndex(selectedColorIndex);
+    auto index = paletteManager->AddPalette(std::move(palette));
+    paletteManager->SetCurrentPalette(index);
+    voxelManager->setPalette(&paletteManager->GetCurrentPalette());
+
+    // Set the dimensions
+    voxelManager->setSize(w, h, d);
 
     // Read voxel data from the file
-    std::vector<uint8_t> intVoxelData(voxelSize);
+    std::vector<uint8_t> intVoxelData(w * h * d);
     file.read(reinterpret_cast<char*>(intVoxelData.data()),
               intVoxelData.size() * sizeof(uint8_t));
     if (file.fail()) {
@@ -57,18 +109,7 @@ bool Serializer::Import() {
     }
     file.close();
 
-    // Convert uint8_t voxel data to float (0.0f - 1.0f)
-    for (size_t i = 0; i < voxelSize; ++i) {
-        (*voxelData)[i] = static_cast<float>(intVoxelData[i]) / 255.0f;
-    }
-
-    // Update the texture
-    *textureHandle =
-        bgfx::createTexture3D(w, h, d, false, bgfx::TextureFormat::R32F,
-                              BGFX_TEXTURE_COMPUTE_WRITE, nullptr);
-    const bgfx::Memory* mem =
-        bgfx::makeRef(voxelData->data(), voxelData->size() * sizeof(float));
-    bgfx::updateTexture3D(*textureHandle, 0, 0, 0, 0, w, h, d, mem);
+    voxelManager->newVoxelData(intVoxelData, w, h, d);
 
     return 0;
 }
@@ -87,17 +128,73 @@ bool Serializer::Export() {
         errorText = "Failed to open file for writing: " + exportPath;
         return 1;
     }
+    // Wrtie the version number
+    const uint16_t version = 1; // Version number for the file format
+    file.write(reinterpret_cast<const char*>(&version), sizeof(uint16_t));
 
+    auto size = voxelManager->getSize();
+    std::cout << "Exporting voxel data with dimensions: "
+              << size.x << "x" << size.y << "x" << size.z << std::endl;
+    uint16_t w = static_cast<uint16_t>(size.x);
+    uint16_t h = static_cast<uint16_t>(size.y);
+    uint16_t d = static_cast<uint16_t>(size.z);
     // Read voxel data from the texture
-    auto voxelSize = voxelData->size();
-    file.write(reinterpret_cast<const char*>(&(*depth)), sizeof(uint16_t));
-    file.write(reinterpret_cast<const char*>(&(*height)), sizeof(uint16_t));
-    file.write(reinterpret_cast<const char*>(&(*width)), sizeof(uint16_t));
+    file.write(reinterpret_cast<const char*>(&(w)), sizeof(uint16_t));
+    file.write(reinterpret_cast<const char*>(&(h)), sizeof(uint16_t));
+    file.write(reinterpret_cast<const char*>(&(d)), sizeof(uint16_t));
 
-    auto intVoxelData = std::vector<uint8_t>(voxelSize);
-    for (size_t i = 0; i < voxelSize; ++i) {
+    if (file.fail()) {
+        errorText = "Failed to write dimensions to file: " + exportPath;
+        file.close();
+        return 1;
+    }
+
+    // Write palette data to the file, in binary, for name, selected color
+    // index, and colors
+    auto& palette = paletteManager->GetCurrentPalette();
+    // Write palette name
+    const std::string& paletteName = palette.getName();
+    const size_t nameLength = paletteName.size();
+    file.write(reinterpret_cast<const char*>(&nameLength), sizeof(size_t));
+    file.write(paletteName.c_str(), nameLength);
+
+    if (file.fail()) {
+        errorText = "Failed to write palette name to file: " + exportPath;
+        file.close();
+        return 1;
+    }
+
+    // Write selected color index
+    const uint16_t selectedColorIndex = palette.getSelectedIndex();
+    file.write(reinterpret_cast<const char*>(&selectedColorIndex),
+               sizeof(uint16_t));
+
+    if (file.fail()) {
+        errorText =
+            "Failed to write selected color index to file: " + exportPath;
+        file.close();
+        return 1;
+    }
+
+    // Write colors
+    auto& colors = palette.getColors();
+    const uint16_t colorCount = colors.size()-1;
+    file.write(reinterpret_cast<const char*>(&colorCount), sizeof(uint16_t));
+    for (uint16_t i = 0; i < colorCount; i++) {
+        file.write(reinterpret_cast<const char*>(&colors[i+1]), sizeof(glm::vec4));
+        if (file.fail()) {
+            errorText = "Failed to write color to file: " + exportPath;
+            file.close();
+            return 1;
+        }
+    }
+
+    // Prepare voxel data for writing
+    auto intVoxelData = std::vector<uint8_t>(size.x * size.y * size.z);
+    for (size_t i = 0; i < intVoxelData.size(); ++i) {
         // Convert float voxel data to uint8_t (0-255)
-        intVoxelData[i] = static_cast<uint8_t>((*voxelData)[i] * 255.0f);
+        intVoxelData[i] =
+            static_cast<uint8_t>(voxelManager->getVoxel()[i] * 255.0f);
     }
 
     // Write voxel data to the file, binary
@@ -113,14 +210,10 @@ bool Serializer::Export() {
     return 0;
 }
 
-void Serializer::Init(std::vector<float>* voxelData,
-                      bgfx::TextureHandle* textureHandle, uint32_t* width,
-                      uint32_t* height, uint32_t* depth) {
-    this->voxelData = voxelData;
-    this->textureHandle = textureHandle;
-    this->width = width;
-    this->height = height;
-    this->depth = depth;
+void Serializer::Init(VoxelManager* voxelManager,
+                      PaletteManager* paletteManager) {
+    this->voxelManager = voxelManager;
+    this->paletteManager = paletteManager;
 }
 
 void Serializer::RenderWindow(bool* open) {

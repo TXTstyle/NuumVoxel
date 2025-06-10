@@ -1,7 +1,7 @@
 #include "Palette.hpp"
 #include <imgui.h>
 
-Palette::Palette(std::string name, uint32_t size) {
+Palette::Palette(std::string name, uint16_t size) {
     this->name = name;
     this->colors.resize(size + 1);
     // Empty space
@@ -13,7 +13,7 @@ Palette::Palette(std::string name, uint32_t size) {
     }
 }
 
-Palette::Palette(std::string name, const std::vector<glm::vec4> colors) {
+Palette::Palette(std::string name, std::vector<glm::vec4> colors) {
     this->name = name;
     this->colors = colors;
     if (this->colors.empty()) {

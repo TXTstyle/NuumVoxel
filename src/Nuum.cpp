@@ -179,8 +179,9 @@ void Nuum::RenderDebugWindow() {
                 viewportMousePos.y);
     ImGui::Text("Is Hovering Viewport: %s",
                 isHoveringViewport ? "true" : "false");
-    ImGui::Text("Camera Window Open: %s", openCameraWindow ? "true" : "false");
-    ImGui::Text("Debug Window Open: %s", openDebugWindow ? "true" : "false");
+    const auto& voxelSize = voxelManager.getSize();
+    ImGui::Text("Voxel Size: %.1f, %.1f, %.1f", voxelSize.x, voxelSize.y,
+                voxelSize.z);
     ImGui::End();
 }
 
@@ -324,12 +325,8 @@ int Nuum::Init(int argc, char** argv) {
 
     voxelManager.Init(16, 16, 16);
     paletteManager.Init();
-    uint32_t *w, *h, *d;
-    w = voxelManager.getWidth();
-    h = voxelManager.getHeight();
-    d = voxelManager.getDepth();
-    serializer.Init(&voxelManager.getVoxel(), &voxelManager.getTextureHandle(),
-                    w, h, d);
+    voxelManager.setPalette(&paletteManager.GetCurrentPalette());
+    serializer.Init(&voxelManager, &paletteManager);
 
     camera.Init();
 

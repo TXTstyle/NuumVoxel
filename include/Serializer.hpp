@@ -1,17 +1,16 @@
 #pragma once
 
-#include "bgfx/bgfx.h"
+#include "PaletteManager.hpp"
+#include "VoxelManager.hpp"
 #include <string>
 #include <glm/glm.hpp>
-#include <vector>
 
 class Serializer {
   private:
     std::string importPath = "";
     std::string exportPath = "";
-    std::vector<float>* voxelData = nullptr;
-    bgfx::TextureHandle* textureHandle = nullptr;
-    uint32_t *width = nullptr, *height = nullptr, *depth = nullptr;
+    VoxelManager* voxelManager = nullptr;
+    PaletteManager* paletteManager = nullptr;
 
     bool showModal = false;
     std::string currentModalTitle = "";
@@ -25,7 +24,6 @@ class Serializer {
     Serializer();
     ~Serializer();
 
-    void Init(std::vector<float>* voxelData, bgfx::TextureHandle* textureHandle, uint32_t* width,
-              uint32_t* height, uint32_t* depth);
+    void Init(VoxelManager* voxelManager, PaletteManager* paletteManager);
     void RenderWindow(bool* open);
 };
