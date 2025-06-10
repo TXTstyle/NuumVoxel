@@ -138,7 +138,7 @@ void main() {
 
     // Ray-plane intersection, with xz plane grid visualization
     const float cellSize = 8.0f * 1/u_gridSize.w; // Number of grid cells per unit
-    const float u_lineWidth = 0.025f; // Width of the grid lines
+    const float u_lineWidth = 0.03f; // Width of the grid lines
     const float planeY = 0.0;
     float denom = rayDir.y;
     if (abs(denom) > epsilon) {

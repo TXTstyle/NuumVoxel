@@ -228,6 +228,9 @@ void Nuum::RenderDockspace() {
             if (ImGui::MenuItem("Palettes", "P", openPaletteWindow)) {
                 openPaletteWindow = !openPaletteWindow;
             }
+            if (ImGui::MenuItem("Import/Export", "S", openSerializerWindow)) {
+                openSerializerWindow = !openSerializerWindow;
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
@@ -274,6 +277,9 @@ void Nuum::HandleEvents() {
             if (event.key.keysym.sym == SDLK_p) {
                 openPaletteWindow = !openPaletteWindow;
             }
+            if (event.key.keysym.sym == SDLK_s) {
+                openSerializerWindow = !openSerializerWindow;
+            }
         }
         // Skip if not hovering viewport
         if (!isHoveringViewport) {
@@ -318,7 +324,12 @@ int Nuum::Init(int argc, char** argv) {
 
     voxelManager.Init(16, 16, 16);
     paletteManager.Init();
-    // voxelManager.setPalette(&palettes[0]);
+    uint32_t *w, *h, *d;
+    w = voxelManager.getWidth();
+    h = voxelManager.getHeight();
+    d = voxelManager.getDepth();
+    serializer.Init(&voxelManager.getVoxel(), &voxelManager.getTextureHandle(),
+                    w, h, d);
 
     camera.Init();
 
@@ -340,6 +351,7 @@ void Nuum::Run() {
         camera.RenderDebugWindow(&openCameraWindow);
         RenderDebugWindow();
         paletteManager.RenderWindow(&openPaletteWindow);
+        serializer.RenderWindow(&openSerializerWindow);
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());

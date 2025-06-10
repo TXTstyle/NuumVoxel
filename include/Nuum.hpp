@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Camera.hpp"
+#include "Serializer.hpp"
 #include "VoxelManager.hpp"
 #include "PaletteManager.hpp"
 #include "imgui.h"
@@ -21,6 +22,7 @@ class Nuum {
     bool openCameraWindow = true;
     bool openDebugWindow = true;
     bool openPaletteWindow = true;
+    bool openSerializerWindow = true;
 
     bgfx::UniformHandle u_camPos;
     bgfx::UniformHandle u_camMat;
@@ -36,6 +38,7 @@ class Nuum {
 
     Camera camera;
     VoxelManager voxelManager;
+    Serializer serializer;
     PaletteManager paletteManager;
 
     void InitBgfx(SDL_Window* window);
