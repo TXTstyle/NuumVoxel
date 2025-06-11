@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Palette.hpp"
+#include "PaletteManager.hpp"
 #include <cstdint>
 #include <bgfx/bgfx.h>
 #include <glm/glm.hpp>
@@ -17,7 +18,7 @@ class VoxelManager {
   private:
     uint32_t width, height, depth;
     std::vector<float> voxelData;
-    Palette* palette;
+    PaletteManager* paletteManager;
 
     const bgfx::Memory* mem;
     bgfx::TextureHandle textureHandle;
@@ -30,39 +31,30 @@ class VoxelManager {
     VoxelManager& operator=(VoxelManager&&) = default;
     VoxelManager& operator=(const VoxelManager&) = default;
     ~VoxelManager();
-    void Init(uint32_t width, uint32_t height, uint32_t depth);
+    void Init(uint32_t width, uint32_t height, uint32_t depth,
+              PaletteManager* paletteManager);
     void Destroy();
 
-    void setVoxel(uint32_t x, uint32_t y, uint32_t z, uint16_t value);
+    void setVoxel(uint32_t x, uint32_t y, uint32_t z, float value);
     uint16_t getVoxel(uint32_t x, uint32_t y, uint32_t z) const;
-    const glm::vec4 getSize() const { return glm::vec4(width, height, depth, 1.0f); }
+    const glm::vec4 getSize() const {
+        return glm::vec4(width, height, depth, 1.0f);
+    }
     inline void setSize(uint32_t newWidth, uint32_t newHeight,
                         uint32_t newDepth) {
         width = newWidth;
         height = newHeight;
         depth = newDepth;
     }
+    void Resize(uint32_t newWidth, uint32_t newHeight, uint32_t newDepth);
+
     void newVoxelData(std::vector<uint8_t>& newVoxelData, uint32_t w,
                       uint32_t h, uint32_t d);
 
-    // void raycastSetVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection, float
-    // voxelSize,
-    //                      uint16_t value);
-    void raycastSetVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection,
-                         float voxelSize, uint16_t value,
-                         PlacementMode mode = PlacementMode::ADJACENT);
-
-    void Resize(uint32_t newWidth, uint32_t newHeight, uint32_t newDepth);
-
-    void placeVoxelAdjacent(glm::vec3& rayOrigin, glm::vec3& rayDirection,
-                            float voxelSize, uint16_t value);
-    void placeVoxelOnGrid(glm::vec3& rayOrigin, glm::vec3& rayDirection,
-                          float voxelSize, uint16_t value);
-    void replaceVoxel(glm::vec3& rayOrigin, glm::vec3& rayDirection,
-                      float voxelSize, uint16_t value);
-
-    inline void setPalette(Palette* newPalette) { palette = newPalette; }
-    inline Palette* getPalette() { return palette; }
+    void raycastSetVoxel(const glm::vec2& mousePos, const glm::vec2& windowSize,
+                         const glm::vec3& rayOrigin, const glm::mat3& camMat,
+                         const float voxelScale = 0.0625f,
+                         const bool deleteVoxel = false);
 
     inline bgfx::TextureHandle& getTextureHandle() { return textureHandle; }
 

@@ -151,8 +151,9 @@ void Nuum::RenderViewportWindow() {
                                ImGuiHoveredFlags_AllowWhenBlockedByPopup);
     if (isHoveringViewport) {
         ImVec2 mousePos = ImGui::GetMousePos();
-        viewportMousePos.x = (mousePos.x - ImGui::GetWindowPos().x);
-        viewportMousePos.y = (mousePos.y - ImGui::GetWindowPos().y);
+        ImVec2 imagePos = ImGui::GetItemRectMin();
+        viewportMousePos.x = (mousePos.x - imagePos.x);
+        viewportMousePos.y = (mousePos.y - imagePos.y);
     }
 
     ImGui::End();
@@ -287,10 +288,17 @@ void Nuum::HandleEvents() {
             continue;
         }
         if (event.type == SDL_MOUSEMOTION) {
-            // std::cout << "Mouse Motion: " << event.motion.xrel << ", "
-            //           << event.motion.yrel << std::endl;
             camera.HandelMouseMotion(event.motion.state, event.motion.xrel,
                                      event.motion.yrel);
+        }
+        if (event.type == SDL_MOUSEBUTTONDOWN) {
+            if (event.button.button == SDL_BUTTON_LEFT) {
+                bool hasShiftModifier = SDL_GetModState() & KMOD_SHIFT;
+                glm::vec2 windowSize(viewportSize.x, viewportSize.y);
+                voxelManager.raycastSetVoxel(
+                    viewportMousePos, windowSize, camera.GetPosition(),
+                    camera.GetViewMatrix(), gridSize[3], hasShiftModifier);
+            }
         }
         if (event.type == SDL_MOUSEWHEEL) {
             camera.HandelMouseWheel(event.wheel.y);
@@ -323,9 +331,8 @@ int Nuum::Init(int argc, char** argv) {
     InitImGui(window);
     viewport = ImGui::GetMainViewport();
 
-    voxelManager.Init(16, 16, 16);
     paletteManager.Init();
-    voxelManager.setPalette(&paletteManager.GetCurrentPalette());
+    voxelManager.Init(16, 16, 16, &paletteManager);
     serializer.Init(&voxelManager, &paletteManager);
 
     camera.Init();

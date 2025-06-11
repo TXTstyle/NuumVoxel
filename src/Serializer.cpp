@@ -107,7 +107,6 @@ bool Serializer::Import() {
     paletteManager->ClearPalettes(); // Clear existing palettes
     auto index = paletteManager->AddPalette(std::move(palette));
     paletteManager->SetCurrentPalette(index);
-    voxelManager->setPalette(&paletteManager->GetCurrentPalette());
 
     // Set the dimensions
     voxelManager->setSize(w, h, d);

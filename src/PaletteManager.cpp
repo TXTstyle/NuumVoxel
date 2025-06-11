@@ -49,7 +49,7 @@ void PaletteManager::RenderWindow(bool* open) {
     }
 
     ImGui::Separator();
-    ImGui::InputText("Palette Name",
+    ImGui::InputText("Name",
                           &palettes[currentPaletteIndex].getName());
     if (ImGui::Button("Delete")) {
         RemovePalette(currentPaletteIndex);

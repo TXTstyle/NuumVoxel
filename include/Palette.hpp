@@ -9,7 +9,7 @@ class Palette {
   private:
     std::string name;
     std::vector<glm::vec4> colors;
-    uint16_t selectedColorIndex = 0;
+    uint16_t selectedColorIndex = 1;
 
   public:
     Palette(std::string name, uint16_t size);
