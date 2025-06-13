@@ -2,7 +2,6 @@
 
 #include "bgfx/bgfx.h"
 #include "bgfx/defines.h"
-#include "bgfx/platform.h"
 #include "bx/platform.h"
 #include "imgui.h"
 #include <SDL_syswm.h>
@@ -25,16 +24,7 @@ Nuum::Nuum() {}
 
 Nuum::~Nuum() {}
 
-void Nuum::InitBgfx(SDL_Window* window) {
-    SDL_SysWMinfo wmInfo;
-    SDL_VERSION(&wmInfo.version);
-    if (!SDL_GetWindowWMInfo(window, &wmInfo)) {
-        std::cerr << "SDL_GetWindowWMInfo failed: " << SDL_GetError()
-                  << std::endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return;
-    }
+void Nuum::InitBgfx(SDL_Window* window, SDL_SysWMinfo& wmInfo) {
     bgfx::Init init;
 
     bgfx::PlatformData pd;
@@ -60,7 +50,7 @@ void Nuum::InitBgfx(SDL_Window* window) {
     init.resolution.width = width;
     init.resolution.height = height;
     init.resolution.reset = BGFX_RESET_VSYNC;
-    bgfx::renderFrame();
+    // bgfx::renderFrame();
     if (!bgfx::init(init)) {
         std::cerr << "Failed to initialize bgfx!\n";
         SDL_DestroyWindow(window);
@@ -215,6 +205,31 @@ void Nuum::RenderDockspace() {
             if (ImGui::MenuItem("Exit", "Ctrl+Q")) {
                 running = false;
             }
+            if (ImGui::MenuItem("Save", "Ctrl+S")) {
+                if (!runOnce) {
+                    int res =
+                        serializer.Export(voxelManager, paletteManager, true);
+                    if (res == 0)
+                        SDL_SetWindowTitle(
+                            window, ("Nuum - " + serializer.GetPath()).c_str());
+                    runOnce = true;
+                }
+            }
+            if (ImGui::MenuItem("Save As", "Ctrl+Shift+S")) {
+                if (!runOnce) {
+                    int res = serializer.Export(voxelManager, paletteManager);
+                    if (res == 0)
+                        SDL_SetWindowTitle(
+                            window, ("Nuum - " + serializer.GetPath()).c_str());
+                    runOnce = true;
+                }
+            }
+            if (ImGui::MenuItem("Open", "Ctrl+O")) {
+                int res = serializer.Import(voxelManager, paletteManager);
+                if (res == 0)
+                    SDL_SetWindowTitle(
+                        window, ("Nuum - " + serializer.GetPath()).c_str());
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit")) {
@@ -229,9 +244,6 @@ void Nuum::RenderDockspace() {
             }
             if (ImGui::MenuItem("Palettes", "P", openPaletteWindow)) {
                 openPaletteWindow = !openPaletteWindow;
-            }
-            if (ImGui::MenuItem("Import/Export", "S", openSerializerWindow)) {
-                openSerializerWindow = !openSerializerWindow;
             }
             ImGui::EndMenu();
         }
@@ -265,7 +277,7 @@ void Nuum::HandleEvents() {
             continue;
         }
         // Handle keyboard input
-        if (event.type == SDL_KEYDOWN) {
+        if (event.type == SDL_KEYUP) {
             if (event.key.keysym.sym == SDLK_q &&
                 SDL_GetModState() & KMOD_CTRL) {
                 running = false;
@@ -279,8 +291,36 @@ void Nuum::HandleEvents() {
             if (event.key.keysym.sym == SDLK_p) {
                 openPaletteWindow = !openPaletteWindow;
             }
-            if (event.key.keysym.sym == SDLK_s) {
-                openSerializerWindow = !openSerializerWindow;
+            if (event.key.keysym.sym == SDLK_s &&
+                SDL_GetModState() & KMOD_CTRL) {
+                if (!runOnce) {
+                    int res =
+                        serializer.Export(voxelManager, paletteManager, true);
+                    if (res == 0)
+                        SDL_SetWindowTitle(
+                            window, ("Nuum - " + serializer.GetPath()).c_str());
+                    runOnce = true;
+                }
+            }
+            if (event.key.keysym.sym == SDLK_s &&
+                SDL_GetModState() & (KMOD_CTRL | KMOD_SHIFT)) {
+                if (!runOnce) {
+                    int res = serializer.Export(voxelManager, paletteManager);
+                    if (res == 0)
+                        SDL_SetWindowTitle(
+                            window, ("Nuum - " + serializer.GetPath()).c_str());
+                    runOnce = true;
+                }
+            }
+            if (event.key.keysym.sym == SDLK_o &&
+                SDL_GetModState() & KMOD_CTRL) {
+                if (!runOnce) {
+                    int res = serializer.Import(voxelManager, paletteManager);
+                    if (res == 0)
+                        SDL_SetWindowTitle(
+                            window, ("Nuum - " + serializer.GetPath()).c_str());
+                    runOnce = true;
+                }
             }
         }
         // Skip if not hovering viewport
@@ -307,6 +347,11 @@ void Nuum::HandleEvents() {
 }
 
 int Nuum::Init(int argc, char** argv) {
+#if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
+    // Prefer Wayland over X11 if available, on linux
+    SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland,x11");
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
         return 1;
@@ -326,14 +371,34 @@ int Nuum::Init(int argc, char** argv) {
         return 1;
     }
 
-    InitBgfx(window);
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    if (!SDL_GetWindowWMInfo(window, &wmInfo)) {
+        std::cerr << "SDL_GetWindowWMInfo failed: " << SDL_GetError()
+                  << std::endl;
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    InitBgfx(window, wmInfo);
     InitShaders();
     InitImGui(window);
     viewport = ImGui::GetMainViewport();
 
     paletteManager.Init();
     voxelManager.Init(16, 16, 16, &paletteManager);
-    serializer.Init(&voxelManager, &paletteManager);
+
+    SDL_Window* serializerWindow = nullptr;
+#if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
+    // NativeFileDialog does not support Wayland
+    if (wmInfo.subsystem != SDL_SYSWM_WAYLAND) {
+        serializerWindow = window;
+    }
+#else
+    serializerWindow = window;
+#endif
+    serializer.Init(serializerWindow);
 
     camera.Init();
 
@@ -355,7 +420,7 @@ void Nuum::Run() {
         camera.RenderDebugWindow(&openCameraWindow);
         RenderDebugWindow();
         paletteManager.RenderWindow(&openPaletteWindow);
-        serializer.RenderWindow(&openSerializerWindow);
+        serializer.RenderWindow();
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
@@ -369,10 +434,12 @@ void Nuum::Run() {
         RenderViewport();
 
         bgfx::frame();
+        runOnce = false;
     }
 }
 
 void Nuum::Shutdown() {
+    serializer.Destroy();
     voxelManager.Destroy();
     paletteManager.Destroy();
     bgfx::destroy(u_camPos);

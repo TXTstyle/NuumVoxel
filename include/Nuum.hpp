@@ -6,6 +6,7 @@
 #include "PaletteManager.hpp"
 #include "imgui.h"
 #include <SDL.h>
+#include <SDL_syswm.h>
 #include <bgfx/bgfx.h>
 #include <glm/glm.hpp>
 
@@ -18,6 +19,7 @@ class Nuum {
 
     SDL_Event event;
     bool running = true;
+    bool runOnce = false;
 
     bool openCameraWindow = true;
     bool openDebugWindow = true;
@@ -41,7 +43,7 @@ class Nuum {
     Serializer serializer;
     PaletteManager paletteManager;
 
-    void InitBgfx(SDL_Window* window);
+    void InitBgfx(SDL_Window* window, SDL_SysWMinfo& wmInfo);
     void InitImGui(SDL_Window* window);
     void InitShaders();
 

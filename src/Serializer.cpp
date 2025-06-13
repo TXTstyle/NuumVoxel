@@ -1,5 +1,6 @@
 #include "Serializer.hpp"
 #include "Palette.hpp"
+#include "VoxelManager.hpp"
 #include "imgui.h"
 #include "imgui_stdlib.h"
 #include <fstream>
@@ -11,38 +12,57 @@ Serializer::Serializer() {}
 
 Serializer::~Serializer() {}
 
-bool Serializer::Import() {
-
-    // Check if the import path is valid
-    if (importPath.empty()) {
-        errorText = "Import path is empty!";
+int Serializer::Import(VoxelManager& voxelManager,
+                       PaletteManager& paletteManager) {
+    int res = fileDialog.OpenFileDialog(path);
+    if (res == 2) {
+        return 2; // User canceled the dialog
+    } else if (res == 1) {
+        errorText = "Failed to open save dialog";
+        showModal = true;
         return 1;
     }
 
-    if (importPath.find(".nuum") == std::string::npos) {
-        importPath += ".nuum"; // Append the default file extension
+    // Check if the import path is valid
+    if (path.empty()) {
+        errorText = "Import path is empty!";
+        showModal = true;
+        return 1;
     }
 
     // Attempt to open the file for reading
-    std::ifstream file(importPath, std::ios::binary);
+    std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        errorText = "Failed to open file: " + importPath;
+        errorText = "Failed to open file: " + path;
+        showModal = true;
         return 1;
     }
-    resultText = "Importing from: " + importPath + "\n";
+    logString = "Importing from: " + path + "\n";
+    // Read magic numbers
+    char magic[5] = {0};
+    file.read(magic, 4);
+    if (file.fail() || std::string(magic) != "NUUM") {
+        errorText = "Invalid file format";
+        file.close();
+        showModal = true;
+        return 1;
+    }
     // Read the version number
     uint16_t version;
     file.read(reinterpret_cast<char*>(&version), sizeof(uint16_t));
     if (file.fail()) {
         errorText = "Failed to read version";
+        file.close();
+        showModal = true;
         return 1;
     }
     if (version != 1) {
         errorText = "Unsupported file version: " + std::to_string(version);
         file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Version: " + std::to_string(version) + "\n";
+    logString += "Version: " + std::to_string(version) + "\n";
 
     // Read dimensions from the file
     uint16_t w, h, d;
@@ -54,62 +74,72 @@ bool Serializer::Import() {
         (w > 0 && h > 0 && d > 0) && (w < 65535 && h < 65535 && d < 65535);
     if (file.fail() || !validDimensions) {
         errorText = "Failed to read dimensions";
+        file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Dimensions: " + std::to_string(w) + "x" + std::to_string(h) +
-                  "x" + std::to_string(d) + "\n";
+    logString += "Dimensions: " + std::to_string(w) + "x" + std::to_string(h) +
+                 "x" + std::to_string(d) + "\n";
 
     // Read palette data from the file
     std::string paletteName;
     size_t nameLength;
     file.read(reinterpret_cast<char*>(&nameLength), sizeof(size_t));
     if (file.fail() || nameLength == 0) {
-        errorText =
-            "Failed to read palette name length";
+        errorText = "Failed to read palette name length";
+        file.close();
+        showModal = true;
         return 1;
     }
     paletteName.resize(nameLength);
     file.read(paletteName.data(), nameLength);
     if (file.fail()) {
         errorText = "Failed to read palette name";
+        file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Palette: " + paletteName + "\n";
+    logString += "Palette: " + paletteName + "\n";
     uint16_t selectedColorIndex;
     file.read(reinterpret_cast<char*>(&selectedColorIndex), sizeof(uint16_t));
     if (file.fail()) {
-        errorText =
-            "Failed to read selected color index";
+        errorText = "Failed to read selected color index";
+        file.close();
+        showModal = true;
         return 1;
     }
-    resultText +=
+    logString +=
         "Selected color index: " + std::to_string(selectedColorIndex) + "\n";
     uint16_t colorCount;
     file.read(reinterpret_cast<char*>(&colorCount), sizeof(uint16_t));
     if (file.fail() || colorCount == 0) {
         errorText = "Failed to read color count";
+        file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Color count: " + std::to_string(colorCount) + "\n";
+    logString += "Color count: " + std::to_string(colorCount) + "\n";
     std::vector<glm::vec4> colors(colorCount);
     for (uint16_t i = 0; i < colorCount; i++) {
         file.read(reinterpret_cast<char*>(&colors[i]), sizeof(glm::vec4));
         if (file.fail()) {
             errorText = "Failed to read color " + std::to_string(i);
+            file.close();
+            showModal = true;
             return 1;
         }
     }
-    resultText += "Colors read successfully.\n";
+    logString += "Colors read successfully.\n";
 
     // Create a new palette with the read data
     Palette palette(std::move(paletteName), std::move(colors));
     palette.setSelectedColorIndex(selectedColorIndex);
-    paletteManager->ClearPalettes(); // Clear existing palettes
-    auto index = paletteManager->AddPalette(std::move(palette));
-    paletteManager->SetCurrentPalette(index);
+    paletteManager.ClearPalettes(); // Clear existing palettes
+    auto index = paletteManager.AddPalette(std::move(palette));
+    paletteManager.SetCurrentPalette(index);
 
     // Set the dimensions
-    voxelManager->setSize(w, h, d);
+    voxelManager.setSize(w, h, d);
 
     // Read voxel data from the file
     std::vector<uint8_t> intVoxelData(w * h * d);
@@ -117,43 +147,68 @@ bool Serializer::Import() {
               intVoxelData.size() * sizeof(uint8_t));
     if (file.fail()) {
         errorText = "Failed to read voxel data";
+        file.close();
+        showModal = true;
         return 1;
     }
     file.close();
-    resultText += "Voxel data read successfully.\n";
+    logString += "Voxel data read successfully.";
 
-    voxelManager->newVoxelData(intVoxelData, w, h, d);
+    voxelManager.newVoxelData(intVoxelData, w, h, d);
 
-    std::cout << "Import log:\n" << resultText << std::endl;
+    std::cout << "Import log:\n" << logString << std::endl;
 
+    logString.clear();
     return 0;
 }
 
-bool Serializer::Export() {
-
-    // Check if the export path is valid
-    if (exportPath.empty()) {
-        errorText = "Export path is empty!";
-        return 1;
+int Serializer::Export(VoxelManager& voxelManager,
+                       PaletteManager& paletteManager, const bool save) {
+    // Open file dialog to get the export path
+    if (!save || path.empty()) {
+        std::cout << "Opening save dialog..." << std::endl;
+        int res = fileDialog.SaveFileDialog(path);
+        if (res == 2) {
+            return 2; // User canceled the dialog
+        } else if (res == 1) {
+            errorText = "Failed to open save dialog";
+            showModal = true;
+            return 1;
+        }
     }
 
-    if (exportPath.find(".nuum") == std::string::npos) {
-        exportPath += ".nuum"; // Append the default file extension
+    // Check if the export path is valid
+    if (path.empty()) {
+        errorText = "Export path is empty!";
+        showModal = true;
+        return 1;
     }
 
     // Attempt to open the file for writing
-    std::ofstream file(exportPath);
+    std::ofstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        errorText = "Failed to open file: " + exportPath;
+        errorText = "Failed to open file: " + path;
+        showModal = true;
         return 1;
     }
-    resultText = "Exporting to: " + exportPath + "\n";
+    logString = "Exporting to: " + path + "\n";
+
+    // Write magic numbers
+    const char magic[] = "NUUM";
+    file.write(magic, sizeof(magic) - 1);
+    if (file.fail()) {
+        errorText = "Failed to write magic numbers";
+        file.close();
+        showModal = true;
+        return 1;
+    }
+
     // Wrtie the version number
     const uint16_t version = 1; // Version number for the file format
     file.write(reinterpret_cast<const char*>(&version), sizeof(uint16_t));
-    resultText += "Version: " + std::to_string(version) + "\n";
+    logString += "Version: " + std::to_string(version) + "\n";
 
-    auto size = voxelManager->getSize();
+    auto size = voxelManager.getSize();
     uint16_t w = static_cast<uint16_t>(size.x);
     uint16_t h = static_cast<uint16_t>(size.y);
     uint16_t d = static_cast<uint16_t>(size.z);
@@ -165,14 +220,15 @@ bool Serializer::Export() {
     if (file.fail()) {
         errorText = "Failed to write dimensions";
         file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Dimensions: " + std::to_string(w) + "x" + std::to_string(h) +
-                  "x" + std::to_string(d) + "\n";
+    logString += "Dimensions: " + std::to_string(w) + "x" + std::to_string(h) +
+                 "x" + std::to_string(d) + "\n";
 
     // Write palette data to the file, in binary, for name, selected color
     // index, and colors
-    auto& palette = paletteManager->GetCurrentPalette();
+    auto& palette = paletteManager.GetCurrentPalette();
     // Write palette name
     const std::string& paletteName = palette.getName();
     const size_t nameLength = paletteName.size();
@@ -182,9 +238,10 @@ bool Serializer::Export() {
     if (file.fail()) {
         errorText = "Failed to write palette name";
         file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Palette: " + paletteName + "\n";
+    logString += "Palette: " + paletteName + "\n";
 
     // Write selected color index
     const uint16_t selectedColorIndex = palette.getSelectedIndex();
@@ -192,36 +249,37 @@ bool Serializer::Export() {
                sizeof(uint16_t));
 
     if (file.fail()) {
-        errorText =
-            "Failed to write selected color index";
+        errorText = "Failed to write selected color index";
         file.close();
+        showModal = true;
         return 1;
     }
-    resultText +=
+    logString +=
         "Selected color index: " + std::to_string(selectedColorIndex) + "\n";
 
     // Write colors
     auto& colors = palette.getColors();
     const uint16_t colorCount = colors.size() - 1;
     file.write(reinterpret_cast<const char*>(&colorCount), sizeof(uint16_t));
-    resultText += "Color count: " + std::to_string(colorCount) + "\n";
+    logString += "Color count: " + std::to_string(colorCount) + "\n";
     for (uint16_t i = 0; i < colorCount; i++) {
         file.write(reinterpret_cast<const char*>(&colors[i + 1]),
                    sizeof(glm::vec4));
         if (file.fail()) {
             errorText = "Failed to write color " + std::to_string(i);
             file.close();
+            showModal = true;
             return 1;
         }
     }
-    resultText += "Colors written successfully.\n";
+    logString += "Colors written successfully.\n";
 
     // Prepare voxel data for writing
     auto intVoxelData = std::vector<uint8_t>(size.x * size.y * size.z);
     for (size_t i = 0; i < intVoxelData.size(); ++i) {
         // Convert float voxel data to uint8_t (0-255)
         intVoxelData[i] =
-            static_cast<uint8_t>(voxelManager->getVoxel()[i] * 255.0f);
+            static_cast<uint8_t>(voxelManager.getVoxel()[i] * 255.0f);
     }
 
     // Write voxel data to the file, binary
@@ -230,71 +288,47 @@ bool Serializer::Export() {
     if (file.fail()) {
         errorText = "Failed to write voxel data";
         file.close();
+        showModal = true;
         return 1;
     }
-    resultText += "Voxel data written successfully.";
+    logString += "Voxel data written successfully.";
     file.close();
 
-    std::cout << "Export log:\n" << resultText << std::endl;
+    std::cout << "Export log:\n" << logString << std::endl;
 
+    logString.clear();
     return 0;
 }
 
-void Serializer::Init(VoxelManager* voxelManager,
-                      PaletteManager* paletteManager) {
-    this->voxelManager = voxelManager;
-    this->paletteManager = paletteManager;
+void Serializer::Init(SDL_Window* window) {
+    this->window = window;
+    fileDialog.Init(window);
 }
 
-void Serializer::RenderWindow(bool* open) {
-    if (!*open)
-        return;
+void Serializer::Destroy() {
+    fileDialog.Destroy();
+    path.clear();
+    errorText.clear();
+    showModal = false;
+}
 
-    ImGui::Begin("Import/Export", open);
-
-    ImGui::Text("Import/Export Voxel Data");
-    ImGui::Separator();
-
-    // Input field for Import Path
-    ImGui::InputText("Import path", &importPath);
-
-    if (ImGui::Button("Import")) {
-        if (!Import()) {
-            currentModalTitle = "Import successful!";
-        } else {
-            currentModalTitle = "Import failed!";
-        }
-        showModal = true;
-    }
-
-    // Input field for Export Path
-    ImGui::InputText("Export path", &exportPath);
-    if (ImGui::Button("Export")) {
-        if (!Export()) {
-            currentModalTitle = "Export successful!";
-        } else {
-            currentModalTitle = "Export failed!";
-        }
-        showModal = true;
-    }
-
-    // Generic modal popup
+void Serializer::RenderWindow() {
     if (showModal) {
-        ImGui::OpenPopup(currentModalTitle.c_str());
+        ImGui::OpenPopup("Result");
     }
 
-    if (ImGui::BeginPopupModal(currentModalTitle.c_str(), nullptr,
+    if (ImGui::BeginPopupModal("Result", nullptr,
                                ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
         // Scrollable text area for result
         ImGui::Text("Log:");
-        if (resultText.empty()) {
+        if (logString.empty()) {
             ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error: %s",
                                errorText.c_str());
         } else {
             ImGui::BeginChild("ResultText", ImVec2(220, 150), true,
                               ImGuiWindowFlags_HorizontalScrollbar);
-            ImGui::TextUnformatted(resultText.c_str());
+            ImGui::TextUnformatted(logString.c_str());
             if (!errorText.empty()) {
                 ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error: %s",
                                    errorText.c_str());
@@ -305,10 +339,8 @@ void Serializer::RenderWindow(bool* open) {
             showModal = false;
             ImGui::CloseCurrentPopup();
             errorText.clear();
-            resultText.clear();
+            logString.clear();
         }
         ImGui::EndPopup();
     }
-
-    ImGui::End();
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(nuum LANGUAGES CXX)
+project(nuum LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -73,7 +73,7 @@ FetchContent_MakeAvailable(glm)
 FetchContent_Declare(
     bgfx-cmake
     GIT_REPOSITORY https://github.com/bkaradzic/bgfx.cmake.git
-    GIT_TAG master
+    GIT_BRANCH master
 )
 FetchContent_MakeAvailable(bgfx-cmake)
 
@@ -157,6 +157,39 @@ target_compile_definitions(imgui PUBLIC
     IMGUI_ENABLE_FREETYPE
 )
 
+# -------------------------------------------------------------------
+# NativeFileDialog
+# -------------------------------------------------------------------
+
+if(PLATFORM_WINDOWS)
+    add_library(nfd STATIC
+    ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/nfd_win.cpp
+    )
+    target_include_directories(nfd PUBLIC
+    ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/include
+    )
+elseif(PLATFORM_LINUX)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(DBUS REQUIRED dbus-1)
+    add_library(nfd STATIC
+        ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/nfd_portal.cpp
+    )
+    target_include_directories(nfd PUBLIC
+        ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/include
+        ${DBUS_INCLUDE_DIRS}
+    )
+    target_link_libraries(nfd PUBLIC
+        ${DBUS_LIBRARIES}
+    )
+elseif(PLATFORM_MACOS)
+    add_library(nfd STATIC
+        ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/nfd_cocoa.m
+    )
+    target_include_directories(nfd PUBLIC
+    ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/include
+    )
+endif()
+
 
 # -------------------------------------------------------------------
 # Sources
@@ -179,6 +212,7 @@ target_include_directories(nuum PRIVATE
     ${bgfx_SOURCE_DIR}/bx/include
     ${CMAKE_SOURCE_DIR}/src/shaders/include
     ${CMAKE_SOURCE_DIR}/src/shaders/include/generated
+    ${NativeFileDialog_SOURCE_DIR}/src/include
 )
 
 # -------------------------------------------------------------------
@@ -189,17 +223,23 @@ target_link_libraries(nuum PRIVATE
     glm
     imgui
     freetype
+    nfd
 )
 set_target_properties(nuum PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
 
 if(PLATFORM_WINDOWS)
     target_include_directories(nuum PRIVATE ${SDL2_SOURCE_DIR}/include)
-    target_link_libraries(nuum PRIVATE SDL2main SDL2)
+    target_link_libraries(nuum PRIVATE SDL2main SDL2 ole32 uuid shell32)
 elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
     target_link_libraries(nuum PRIVATE ${SDL2_LIBRARIES})
     target_link_libraries(nuum PRIVATE m dl pthread)
     if(PLATFORM_MACOS)
         find_library(COCOA_LIBRARY Cocoa REQUIRED)
-        target_link_libraries(nuum PRIVATE ${COCOA_LIBRARY} ${SDL2_LIBRARIES})
+        find_library(Appkit_LIBRARY AppKit REQUIRED)
+        find_library(UniformTypeLibrary UniformTypeIdentifiers REQUIRED)
+        target_link_libraries(nuum PRIVATE
+        ${COCOA_LIBRARY} ${SDL2_LIBRARIES}
+        ${Appkit_LIBRARY} ${UniformTypeLibrary}
+        )
     endif()
 endif()

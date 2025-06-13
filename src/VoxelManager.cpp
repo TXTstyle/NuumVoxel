@@ -8,7 +8,6 @@
 #include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
-#include <functional>
 #include <iostream>
 #include <vector>
 #include <bx/bx.h>
