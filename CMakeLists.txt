@@ -222,23 +222,22 @@ target_link_libraries(nuum PRIVATE
     bgfx
     glm
     imgui
-    freetype
     nfd
 )
 set_target_properties(nuum PROPERTIES DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
 
 if(PLATFORM_WINDOWS)
     target_include_directories(nuum PRIVATE ${SDL2_SOURCE_DIR}/include)
-    target_link_libraries(nuum PRIVATE SDL2main SDL2 ole32 uuid shell32)
+    target_link_libraries(nuum PRIVATE SDL2main SDL2 ole32 uuid shell32 freetype)
 elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
-    target_link_libraries(nuum PRIVATE ${SDL2_LIBRARIES})
+    target_link_libraries(nuum PRIVATE ${SDL2_LIBRARIES} ${FREETYPE_LIBRARIES})
     target_link_libraries(nuum PRIVATE m dl pthread)
     if(PLATFORM_MACOS)
         find_library(COCOA_LIBRARY Cocoa REQUIRED)
         find_library(Appkit_LIBRARY AppKit REQUIRED)
         find_library(UniformTypeLibrary UniformTypeIdentifiers REQUIRED)
         target_link_libraries(nuum PRIVATE
-        ${COCOA_LIBRARY} ${SDL2_LIBRARIES}
+        ${COCOA_LIBRARY} ${SDL2_LIBRARIES} ${FREETYPE_LIBRARIES}
         ${Appkit_LIBRARY} ${UniformTypeLibrary}
         )
     endif()
