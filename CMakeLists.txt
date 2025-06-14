@@ -185,8 +185,14 @@ elseif(PLATFORM_MACOS)
     add_library(nfd STATIC
         ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/nfd_cocoa.m
     )
+    find_library(UniformTypeIdentifiers_LIBRARY UniformTypeIdentifiers REQUIRED)
+    find_library(Appkit_LIBRARY AppKit REQUIRED)
     target_include_directories(nfd PUBLIC
     ${CMAKE_SOURCE_DIR}/vendor/nativefiledialog/src/include
+    )
+    target_link_libraries(nfd PUBLIC
+        ${UniformTypeIdentifiers_LIBRARY}
+        ${Appkit_LIBRARY}
     )
 endif()
 
@@ -232,13 +238,11 @@ if(PLATFORM_WINDOWS)
 elseif(PLATFORM_LINUX OR PLATFORM_MACOS)
     target_link_libraries(nuum PRIVATE ${SDL2_LIBRARIES} ${FREETYPE_LIBRARIES})
     target_link_libraries(nuum PRIVATE m dl pthread)
-    if(PLATFORM_MACOS)
-        find_library(COCOA_LIBRARY Cocoa REQUIRED)
-        find_library(Appkit_LIBRARY AppKit REQUIRED)
-        find_library(UniformTypeLibrary UniformTypeIdentifiers REQUIRED)
-        target_link_libraries(nuum PRIVATE
+elseif(PLATFORM_MACOS)
+    find_library(COCOA_LIBRARY Cocoa REQUIRED)
+    find_library(Appkit_LIBRARY AppKit REQUIRED)
+    target_link_libraries(nuum PRIVATE
         ${COCOA_LIBRARY} ${SDL2_LIBRARIES} ${FREETYPE_LIBRARIES}
-        ${Appkit_LIBRARY} ${UniformTypeLibrary}
+        ${Appkit_LIBRARY}
         )
-    endif()
 endif()

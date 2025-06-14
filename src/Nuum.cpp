@@ -1,6 +1,7 @@
 #include "Nuum.hpp"
 
 #include "bgfx/bgfx.h"
+#include "bgfx/platform.h"
 #include "bgfx/defines.h"
 #include "bx/platform.h"
 #include "imgui.h"
@@ -50,7 +51,7 @@ void Nuum::InitBgfx(SDL_Window* window, SDL_SysWMinfo& wmInfo) {
     init.resolution.width = width;
     init.resolution.height = height;
     init.resolution.reset = BGFX_RESET_VSYNC;
-    // bgfx::renderFrame();
+    bgfx::renderFrame();
     if (!bgfx::init(init)) {
         std::cerr << "Failed to initialize bgfx!\n";
         SDL_DestroyWindow(window);
@@ -77,7 +78,7 @@ void Nuum::InitShaders() {
     outputTexture = bgfx::createTexture2D(
         uint16_t(width * 1.2f), uint16_t(height * 1.2f), false, 1,
         bgfx::TextureFormat::RGBA8,
-        BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
+        BGFX_TEXTURE_COMPUTE_WRITE);
 
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
     computeProgram = bgfx::createProgram(
@@ -131,7 +132,7 @@ void Nuum::RenderViewportWindow() {
         outputTexture = bgfx::createTexture2D(
             uint16_t(viewportSize.x * 1.2f), uint16_t(viewportSize.y * 1.2f),
             false, 1, bgfx::TextureFormat::RGBA8,
-            BGFX_TEXTURE_COMPUTE_WRITE | BGFX_TEXTURE_MSAA_SAMPLE);
+            BGFX_TEXTURE_COMPUTE_WRITE);
     }
 
     ImGui::Image(outputTexture.idx, viewportSize);
