@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <tiny_obj_loader.h>
 
 Serializer::Serializer() {}
 
@@ -295,6 +296,156 @@ int Serializer::Export(VoxelManager& voxelManager,
     file.close();
 
     std::cout << "Export log:\n" << logString << std::endl;
+
+    logString.clear();
+    return 0;
+}
+
+BoundingBox Serializer::CalculateTriangleBoundingBox(const glm::vec3& v0,
+                                                     const glm::vec3& v1,
+                                                     const glm::vec3& v2) {
+    BoundingBox box;
+    constexpr glm::vec3 epsilon(0.001f);
+    box.min = glm::min(glm::min(v0, v1), v2) - epsilon;
+    box.max = glm::max(glm::max(v0, v1), v2) + epsilon;
+    return box;
+}
+
+int Serializer::LoadObjFile(const std::string& path, BoundingBox& bbox,
+                            std::vector<std::array<glm::vec3, 3>>& triangles) {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
+                          path.c_str())) {
+        std::cerr << "Failed to load/parse .obj file: " << path << std::endl;
+        if (!warn.empty()) {
+            std::cerr << "Warning: " << warn << std::endl;
+        }
+        if (!err.empty()) {
+            std::cerr << "Error: " << err << std::endl;
+        }
+        return 1;
+    }
+
+    bbox.min = glm::vec3(std::numeric_limits<float>::max());
+    bbox.max = glm::vec3(std::numeric_limits<float>::lowest());
+
+    size_t triangleCount = 0;
+    for (const auto& shape : shapes) {
+        triangleCount += shape.mesh.indices.size() / 3;
+    }
+    triangles.reserve(triangleCount);
+
+    for (const auto& shape : shapes) {
+        std::vector<glm::vec3> verts(shape.mesh.indices.size());
+        for (const auto& index : shape.mesh.indices) {
+            glm::vec3 vert;
+
+            vert = {attrib.vertices[3 * index.vertex_index + 0],
+                    attrib.vertices[3 * index.vertex_index + 1],
+                    attrib.vertices[3 * index.vertex_index + 2]};
+
+            // Update bounding box
+            bbox.min = glm::min(bbox.min, vert);
+            bbox.max = glm::max(bbox.max, vert);
+
+            verts.push_back(vert);
+        }
+
+        for (size_t i = 0; i < verts.size(); i += 3) {
+            std::array<glm::vec3, 3> trig;
+
+            // Pos
+            trig[0] = verts[i + 0];
+            trig[1] = verts[i + 1];
+            trig[2] = verts[i + 2];
+
+            triangles.push_back(trig);
+        }
+    }
+    return 0;
+}
+
+int Serializer::ImportFromObj(VoxelManager& voxelManager,
+                              PaletteManager& paletteManager) {
+    int res = fileDialog.OpenFileDialog(path);
+    if (res == 2) {
+        return 2; // User canceled the dialog
+    } else if (res == 1) {
+        errorText = "Failed to open file dialog";
+        showModal = true;
+        return 1;
+    }
+
+    if (path.empty()) {
+        errorText = "Import path is empty!";
+        showModal = true;
+        return 1;
+    }
+
+    if (path.find(".obj") == std::string::npos) {
+        errorText = "Invalid file format. Please select a .obj file.";
+        showModal = true;
+        return 1;
+    }
+
+    // Attempt to load the .obj file
+    BoundingBox bbox;
+    std::vector<std::array<glm::vec3, 3>> triangles;
+    int loadResult = LoadObjFile(path, bbox, triangles);
+    if (loadResult != 0) {
+        errorText = "Failed to load .obj file: " + path;
+        showModal = true;
+        return 1;
+    }
+    logString = "Importing from .obj file: " + path + "\n";
+
+    logString +=
+        "Bounding box: [" + std::to_string(bbox.min.x) + ", " +
+        std::to_string(bbox.min.y) + ", " + std::to_string(bbox.min.z) +
+        "] to [" + std::to_string(bbox.max.x) + ", " +
+        std::to_string(bbox.max.y) + ", " + std::to_string(bbox.max.z) + "]\n";
+    logString += "Triangles count: " + std::to_string(triangles.size()) + "\n";
+
+    constexpr float voxelSize = 1 / 16.0f;
+
+    const int width =
+        static_cast<int>(std::ceil((bbox.max.x - bbox.min.x) / voxelSize));
+    const int height =
+        static_cast<int>(std::ceil((bbox.max.y - bbox.min.y) / voxelSize));
+    const int depth =
+        static_cast<int>(std::ceil((bbox.max.z - bbox.min.z) / voxelSize));
+
+    uint16_t paletteSize =
+        paletteManager.GetCurrentPalette().getColors().size() - 1;
+    std::vector<uint8_t> voxelData(width * height * depth, 0);
+
+    for (const auto& tri : triangles) {
+        BoundingBox box = CalculateTriangleBoundingBox(tri[0], tri[1], tri[2]);
+        glm::ivec3 minVoxel = glm::floor((box.min - bbox.min) / voxelSize);
+        glm::ivec3 maxVoxel = glm::ceil((box.max - bbox.min) / voxelSize);
+
+        for (int x = minVoxel.x; x <= maxVoxel.x; ++x) {
+            for (int y = minVoxel.y; y <= maxVoxel.y; ++y) {
+                for (int z = minVoxel.z; z <= maxVoxel.z; ++z) {
+                    if (x < 0 || x >= width || y < 0 || y >= height || z < 0 ||
+                        z >= depth) {
+                        continue;
+                    }
+                    int index = x + y * width + z * width * height;
+                    voxelData[index] = index % paletteSize + 1;
+                }
+            }
+        }
+    }
+    logString += "Voxel data generated successfully.\n";
+
+    voxelManager.setSize(width, height, depth);
+    voxelManager.newVoxelData(voxelData, width, height, depth);
+    std::cout << "Import log:\n" << logString << std::endl;
 
     logString.clear();
     return 0;

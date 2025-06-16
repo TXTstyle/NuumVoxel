@@ -209,6 +209,7 @@ add_executable(nuum ${SRC_FILES} ${SHADER_FILES_VS} ${SHADER_FILES_FS} ${SHADER_
 target_include_directories(nuum PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/shaders/include/generated
+    ${CMAKE_SOURCE_DIR}/vendor/tinyobjloader
     # include directories for dependencies
     ${SDL2_SOURCE_DIR}/include
     ${imgui_SOURCE_DIR}

@@ -231,6 +231,12 @@ void Nuum::RenderDockspace() {
                     SDL_SetWindowTitle(
                         window, ("Nuum - " + serializer.GetPath()).c_str());
             }
+            if (ImGui::MenuItem("Open OBJ", "Ctrl+Shift+O")) {
+                int res = serializer.ImportFromObj(voxelManager, paletteManager);
+                if (res == 0)
+                    SDL_SetWindowTitle(
+                        window, ("Nuum - " + serializer.GetPath()).c_str());
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit")) {
@@ -282,15 +288,19 @@ void Nuum::HandleEvents() {
             if (event.key.keysym.sym == SDLK_q &&
                 SDL_GetModState() & KMOD_CTRL) {
                 running = false;
+                continue;
             }
             if (event.key.keysym.sym == SDLK_c) {
                 openCameraWindow = !openCameraWindow;
+                continue;
             }
             if (event.key.keysym.sym == SDLK_d) {
                 openDebugWindow = !openDebugWindow;
+                continue;
             }
             if (event.key.keysym.sym == SDLK_p) {
                 openPaletteWindow = !openPaletteWindow;
+                continue;
             }
             if (event.key.keysym.sym == SDLK_s &&
                 SDL_GetModState() & KMOD_CTRL) {
@@ -302,6 +312,7 @@ void Nuum::HandleEvents() {
                             window, ("Nuum - " + serializer.GetPath()).c_str());
                     runOnce = true;
                 }
+                continue;
             }
             if (event.key.keysym.sym == SDLK_s &&
                 SDL_GetModState() & (KMOD_CTRL | KMOD_SHIFT)) {
@@ -312,6 +323,18 @@ void Nuum::HandleEvents() {
                             window, ("Nuum - " + serializer.GetPath()).c_str());
                     runOnce = true;
                 }
+                continue;
+            }
+            if (event.key.keysym.sym == SDLK_o &&
+                SDL_GetModState() & (KMOD_CTRL | KMOD_SHIFT)) {
+                if (!runOnce) {
+                    int res = serializer.ImportFromObj(voxelManager, paletteManager);
+                    if (res == 0)
+                        SDL_SetWindowTitle(
+                            window, ("Nuum - " + serializer.GetPath()).c_str());
+                    runOnce = true;
+                }
+                continue;
             }
             if (event.key.keysym.sym == SDLK_o &&
                 SDL_GetModState() & KMOD_CTRL) {
@@ -322,6 +345,7 @@ void Nuum::HandleEvents() {
                             window, ("Nuum - " + serializer.GetPath()).c_str());
                     runOnce = true;
                 }
+                continue;
             }
         }
         // Skip if not hovering viewport
