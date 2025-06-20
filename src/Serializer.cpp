@@ -419,8 +419,8 @@ int Serializer::ImportFromObj(VoxelManager& voxelManager,
     const int depth =
         static_cast<int>(std::ceil((bbox.max.z - bbox.min.z) / voxelSize));
 
-    uint16_t paletteSize =
-        paletteManager.GetCurrentPalette().getColors().size() - 1;
+    uint16_t paletteColor =
+        paletteManager.GetCurrentPalette().getSelectedIndex();
     std::vector<uint8_t> voxelData(width * height * depth, 0);
 
     for (const auto& tri : triangles) {
@@ -436,7 +436,7 @@ int Serializer::ImportFromObj(VoxelManager& voxelManager,
                         continue;
                     }
                     int index = x + y * width + z * width * height;
-                    voxelData[index] = index % paletteSize + 1;
+                    voxelData[index] = paletteColor;
                 }
             }
         }
