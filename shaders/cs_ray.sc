@@ -38,8 +38,7 @@ void main() {
     uv.y = -uv.y; // Invert y-axis for OpenGL
     float aspect = float(imageSize.x) / float(imageSize.y);
     float scale = tan(radians(fov) * 0.5);
-    uv.x *= aspect * scale;
-    uv.y *= scale;
+    uv = uv * vec2(aspect, 1.0) * scale;
     vec3 rayDirCam = normalize(vec3(uv, -1.0)); // Ray direction in camera space
     vec3 rayDir = normalize(u_camMat * rayDirCam); // Ray direction in world space
 
@@ -123,7 +122,8 @@ void main() {
             float index = voxelValue * 255.0; // Voxel values are in [0, 1]
             vec4 color = paletteBuffer[int(index)];
             // Lambertian shading based on normal
-            float lightIntensity = max(dot(hitNormal, rayDir), 0.1);
+            vec3 dir = u_camMat * vec3(0.0, 0.0, -1.0);
+            float lightIntensity = max(dot(hitNormal, dir), 0.1);
             color.rgb *= lightIntensity;
             imageStore(u_outputImage, pixelCoords, color);
             return;
