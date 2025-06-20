@@ -96,6 +96,14 @@ void main() {
     return;
     #endif
 
+    vec3 hitNormal = vec3(0.0);
+    float eps = 1e-5;
+    if (abs(tmin - t0s.x) < eps) hitNormal.x = 1.0;
+    if (abs(tmin - t1s.x) < eps) hitNormal.x = -1.0;
+    if (abs(tmin - t0s.y) < eps) hitNormal.y = 1.0;
+    if (abs(tmin - t1s.y) < eps) hitNormal.y = -1.0;
+    if (abs(tmin - t0s.z) < eps) hitNormal.z = 1.0;
+    if (abs(tmin - t1s.z) < eps) hitNormal.z = -1.0;
     // Ray marching through the grid
     const int maxSteps = 256;
     for (int i = 0; i < maxSteps; ++i)
@@ -114,6 +122,9 @@ void main() {
             // Fetch color from palette buffer
             float index = voxelValue * 255.0; // Voxel values are in [0, 1]
             vec4 color = paletteBuffer[int(index)];
+            // Lambertian shading based on normal
+            float lightIntensity = max(dot(hitNormal, rayDir), 0.1);
+            color.rgb *= lightIntensity;
             imageStore(u_outputImage, pixelCoords, color);
             return;
         }
@@ -123,21 +134,24 @@ void main() {
         {
             voxel.x += step.x;
             tMax.x += deltaT.x;
+            hitNormal = vec3(step.x, 0.0, 0.0);
         }
         else if (tMax.y < tMax.z)
         {
             voxel.y += step.y;
             tMax.y += deltaT.y;
+            hitNormal = vec3(0.0, step.y, 0.0);
         }
         else
         {
             voxel.z += step.z;
             tMax.z += deltaT.z;
+            hitNormal = vec3(0.0, 0.0, step.z);
         }
     }
 
     // Ray-plane intersection, with xz plane grid visualization
-    const float cellSize = 8.0f * 1/u_gridSize.w; // Number of grid cells per unit
+    const float cellSize = 8.0f * 1 / u_gridSize.w; // Number of grid cells per unit
     const float u_lineWidth = 0.03f; // Width of the grid lines
     const float planeY = 0.0;
     float denom = rayDir.y;
