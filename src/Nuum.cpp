@@ -225,6 +225,12 @@ void Nuum::RenderDockspace() {
                     runOnce = true;
                 }
             }
+            if (ImGui::MenuItem("Save As NUPR", nullptr)) {
+                if (!runOnce) {
+                    int res = serializer.ExportToNUPR(voxelManager, paletteManager);
+                    runOnce = true;
+                }
+            }
             if (ImGui::MenuItem("Open", "Ctrl+O")) {
                 int res = serializer.Import(voxelManager, paletteManager);
                 if (res == 0)

@@ -37,6 +37,8 @@ class Serializer {
                const bool save = false);
     int ImportFromObj(VoxelManager& voxelManager,
                       PaletteManager& paletteManager);
+    int ExportToNUPR(VoxelManager& voxelManager,
+                        PaletteManager& paletteManager);
 
     void Init(SDL_Window* window);
     void Destroy();

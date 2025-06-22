@@ -451,6 +451,116 @@ int Serializer::ImportFromObj(VoxelManager& voxelManager,
     return 0;
 }
 
+int Serializer::ExportToNUPR(VoxelManager& voxelManager,
+                             PaletteManager& paletteManager) {
+    // Open file dialog to get the export path
+    std::cout << "Opening save dialog..." << std::endl;
+    int res = fileDialog.SaveFileDialog(path, "Untitled.nupr");
+    if (res == 2) {
+        return 2; // User canceled the dialog
+    } else if (res == 1) {
+        errorText = "Failed to open save dialog";
+        showModal = true;
+        return 1;
+    }
+
+    // Check if the export path is valid
+    if (path.empty()) {
+        errorText = "Export path is empty!";
+        showModal = true;
+        return 1;
+    }
+
+    // Attempt to open the file for writing
+    std::ofstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        errorText = "Failed to open file: " + path;
+        showModal = true;
+        return 1;
+    }
+    logString = "Exporting to: " + path + "\n";
+
+    // Write magic numbers
+    const char magicNumber[5] = "NUPR";
+    file.write(reinterpret_cast<const char*>(&magicNumber),
+               sizeof(magicNumber));
+    if (file.fail()) {
+        errorText = "Failed to write magic numbers";
+        file.close();
+        showModal = true;
+        return 1;
+    }
+
+    // Write voxelgrid size
+    auto VoxelSize = voxelManager.getSize();
+    uint32_t sizeX = static_cast<uint32_t>(VoxelSize.x);
+    uint32_t sizeY = static_cast<uint32_t>(VoxelSize.y);
+    uint32_t sizeZ = static_cast<uint32_t>(VoxelSize.z);
+    file.write(reinterpret_cast<const char*>(&sizeX), sizeof(sizeX));
+    file.write(reinterpret_cast<const char*>(&sizeY), sizeof(sizeY));
+    file.write(reinterpret_cast<const char*>(&sizeZ), sizeof(sizeZ));
+
+    if (file.fail()) {
+        errorText = "Failed to voxel grid size";
+        file.close();
+        showModal = true;
+        return 1;
+    }
+    logString += "Voxel grid size: " + std::to_string(sizeX) + "x" +
+                 std::to_string(sizeY) + "x" + std::to_string(sizeZ) + "\n";
+
+    auto& voxelData = voxelManager.getVoxel();
+    auto& palette = paletteManager.GetCurrentPalette().getColors();
+    std::vector<glm::u8vec4> voxelColorsVec(sizeX * sizeY * sizeZ);
+    for (uint32_t x = 0; x < sizeX; x++) {
+        for (uint32_t y = 0; y < sizeY; y++) {
+            for (uint32_t z = 0; z < sizeZ; z++) {
+                uint32_t index = x + y * sizeX + z * sizeX * sizeY;
+                uint16_t voxelValue = voxelData[index] * 255.0f;
+                if (voxelValue == 0) {
+                    voxelColorsVec[index] = glm::u8vec4(0, 0, 0, 0);
+                } else {
+                    glm::vec4 color = palette[voxelValue];
+                    voxelColorsVec[index] =
+                        glm::u8vec4(static_cast<uint8_t>(color.r * 255),
+                                    static_cast<uint8_t>(color.g * 255),
+                                    static_cast<uint8_t>(color.b * 255),
+                                    static_cast<uint8_t>(color.a * 255));
+                }
+            }
+        }
+    }
+    
+    const uint64_t size = voxelColorsVec.size();
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+
+    if (file.fail()) {
+        errorText = "Failed to write voxel count";
+        file.close();
+        showModal = true;
+        return 1;
+    }
+    logString += "Voxel Count: " + std::to_string(size) + "\n";
+
+    file.write(reinterpret_cast<const char*>(voxelColorsVec.data()),
+               size * sizeof(glm::u8vec4));
+
+    if (file.fail()) {
+        errorText = "Failed to write voxels";
+        showModal = true;
+        file.close();
+        return 1;
+    }
+
+    logString += "Voxel colors written successfully.\n";
+    file.close();
+
+    std::cout << "Export log:\n" << logString << std::endl;
+
+    logString.clear();
+
+    return 0;
+}
 void Serializer::Init(SDL_Window* window) {
     this->window = window;
     fileDialog.Init(window);

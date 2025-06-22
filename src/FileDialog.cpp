@@ -22,11 +22,11 @@ int FileDialog::OpenFileDialog(std::string& outPath, const nfdu8filteritem_t* fi
     return 0;
 }
 
-int FileDialog::SaveFileDialog(std::string& outPath, const nfdu8filteritem_t* filter,
+int FileDialog::SaveFileDialog(std::string& outPath, const std::string& defaultName, const nfdu8filteritem_t* filter,
                                const size_t filterCount) {
     nfdu8char_t* outPathCStr = nullptr;
     nfdresult_t result = NFD::SaveDialog(outPathCStr, filter, filterCount, ".",
-                                         "Untitled.nuum", nativeWindow);
+                                         defaultName.c_str(), nativeWindow);
     if (result == NFD_CANCEL) {
         outPath = "";
         return 2;

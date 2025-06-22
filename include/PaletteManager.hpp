@@ -8,7 +8,7 @@ class PaletteManager {
 private:
     std::vector<Palette> palettes;
     uint32_t currentPaletteIndex;
-     int32_t paletteSize;
+    int32_t paletteSize;
 
     bgfx::DynamicVertexBufferHandle paletteBuffer;
     bgfx::VertexLayout paletteLayout;
