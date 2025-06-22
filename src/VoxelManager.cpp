@@ -21,6 +21,9 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth,
     this->width = width;
     this->height = height;
     this->depth = depth;
+    this->brickWidth = (width + brickSize - 1) / brickSize;
+    this->brickHeight = (height + brickSize - 1) / brickSize;
+    this->brickDepth = (depth + brickSize - 1) / brickSize;
     this->paletteManager = paletteManager;
 
     // voxel data for 3D texture
@@ -29,7 +32,7 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth,
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 int index = (z * height * width + y * width + x);
-                if (x > 8) {
+                if (x < width / 3) {
                     voxelData[index] = (index % 17) / 255.0f; // R32F
                 } else {
                     voxelData[index] = 0.0f;
@@ -38,18 +41,68 @@ void VoxelManager::Init(uint32_t width, uint32_t height, uint32_t depth,
         }
     }
 
-    mem =
+    // occupancy data for 3D texture
+    occupancyData.resize(brickWidth * brickHeight * brickDepth, 0);
+
+    for (int z = 0; z < brickDepth; ++z) {
+        for (int y = 0; y < brickHeight; ++y) {
+            for (int x = 0; x < brickWidth; ++x) {
+                bool occupied = false;
+
+                for (int bz = 0; bz < brickSize && !occupied; ++bz) {
+                    for (int by = 0; by < brickSize && !occupied; ++by) {
+                        for (int bx = 0; bx < brickSize && !occupied; ++bx) {
+                            int voxelX = x * brickSize + bx;
+                            int voxelY = y * brickSize + by;
+                            int voxelZ = z * brickSize + bz;
+
+                            if (voxelX < width && voxelY < height &&
+                                voxelZ < depth) {
+                                int index = (voxelZ * height * width +
+                                             voxelY * width + voxelX);
+                                if (voxelData[index] > 0.003f) { // 1/255
+                                    occupied = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                occupancyData[z * brickHeight * brickWidth + y * brickWidth +
+                              x] = occupied ? 255 : 0;
+            }
+        }
+    }
+
+    const bgfx::Memory* mem =
         bgfx::makeRef(voxelData.data(), width * height * depth * sizeof(float));
     if (!mem) {
         std::cerr << "Failed to allocate memory for voxel texture."
                   << std::endl;
         return;
     }
+
+    const bgfx::Memory* occupancyMem = bgfx::makeRef(
+        occupancyData.data(), brickWidth * brickHeight * brickDepth);
+    if (!occupancyMem) {
+        std::cerr << "Failed to allocate memory for occupancy texture."
+                  << std::endl;
+        return;
+    }
+
     textureHandle = bgfx::createTexture3D(
         width, height, depth, false, bgfx::TextureFormat::R32F, 0, nullptr);
     bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, width, height, depth, mem);
     s_voxelTexture =
         bgfx::createUniform("s_voxelTexture", bgfx::UniformType::Sampler);
+
+    brickTextureHandle = bgfx::createTexture3D(
+        brickWidth, brickHeight, brickDepth, false, bgfx::TextureFormat::R8,
+        BGFX_TEXTURE_COMPUTE_WRITE | BGFX_SAMPLER_UVW_CLAMP, nullptr);
+    s_brickVoxelTexture =
+        bgfx::createUniform("s_brickVoxelTexture", bgfx::UniformType::Sampler);
+    bgfx::updateTexture3D(brickTextureHandle, 0, 0, 0, 0, brickWidth,
+                          brickHeight, brickDepth, occupancyMem);
 }
 
 void VoxelManager::Destroy() {
@@ -61,7 +114,14 @@ void VoxelManager::Destroy() {
         bgfx::destroy(textureHandle);
         textureHandle.idx = bgfx::kInvalidHandle;
     }
-    mem = nullptr;
+    if (s_brickVoxelTexture.idx != bgfx::kInvalidHandle) {
+        bgfx::destroy(s_brickVoxelTexture);
+        s_brickVoxelTexture.idx = bgfx::kInvalidHandle;
+    }
+    if (brickTextureHandle.idx != bgfx::kInvalidHandle) {
+        bgfx::destroy(brickTextureHandle);
+        brickTextureHandle.idx = bgfx::kInvalidHandle;
+    }
 }
 
 void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z, float value) {
@@ -76,6 +136,49 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z, float value) {
 
     // Update just the one voxel in the 3D texture
     bgfx::updateTexture3D(textureHandle, 0, x, y, z, 1, 1, 1, updateMem);
+
+    // Update the occupancy data
+    int brickX = x / brickSize;
+    int brickY = y / brickSize;
+    int brickZ = z / brickSize;
+    int brickIndex =
+        brickZ * brickHeight * brickWidth + brickY * brickWidth + brickX;
+    // if the voxel is in unoccupied brick, mark it as occupied, vice versa
+    if (value > 0.003f && !occupancyData[brickIndex]) {
+        occupancyData[brickIndex] = 255; // Mark as occupied
+        uint8_t occupancyValue = occupancyData[brickIndex];
+        const bgfx::Memory* occupancyUpdateMem =
+            bgfx::copy(&occupancyValue, sizeof(uint8_t));
+        bgfx::updateTexture3D(brickTextureHandle, 0, brickX, brickY, brickZ, 1,
+                              1, 1, occupancyUpdateMem);
+    } else if (value <= 0.003f && occupancyData[brickIndex]) {
+        // check if last voxel in brick
+        for (int bz = 0; bz < brickSize; ++bz) {
+            for (int by = 0; by < brickSize; ++by) {
+                for (int bx = 0; bx < brickSize; ++bx) {
+                    int voxelX = brickX * brickSize + bx;
+                    int voxelY = brickY * brickSize + by;
+                    int voxelZ = brickZ * brickSize + bz;
+
+                    if (voxelX < width && voxelY < height &&
+                        voxelZ < depth) {
+                        int index =
+                            (voxelZ * height * width + voxelY * width +
+                             voxelX);
+                        if (voxelData[index] > 0.003f) {
+                            return; // Still occupied
+                        }
+                    }
+                }
+            }
+        }
+        occupancyData[brickIndex] = 0; // Mark as unoccupied
+        uint8_t occupancyValue = occupancyData[brickIndex];
+        const bgfx::Memory* occupancyUpdateMem =
+            bgfx::copy(&occupancyValue, sizeof(uint8_t));
+        bgfx::updateTexture3D(brickTextureHandle, 0, brickX, brickY, brickZ, 1,
+                              1, 1, occupancyUpdateMem);
+    }
 }
 
 uint16_t VoxelManager::getVoxel(uint32_t x, uint32_t y, uint32_t z) const {
@@ -112,6 +215,7 @@ void VoxelManager::newVoxelData(std::vector<uint8_t>& newVoxelData, uint32_t w,
     const bgfx::Memory* mem =
         bgfx::makeRef(voxelData.data(), voxelData.size() * sizeof(float));
     bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, w, h, d, mem);
+
 }
 
 void VoxelManager::Resize(uint32_t newWidth, uint32_t newHeight,
@@ -148,6 +252,57 @@ void VoxelManager::Resize(uint32_t newWidth, uint32_t newHeight,
     width = newWidth;
     height = newHeight;
     depth = newDepth;
+
+    // Update brick dimensions
+    brickWidth = (width + brickSize - 1) / brickSize;
+    brickHeight = (height + brickSize - 1) / brickSize;
+    brickDepth = (depth + brickSize - 1) / brickSize;
+
+    // Resize the occupancy data vector
+    occupancyData.resize(brickWidth * brickHeight * brickDepth, 0);
+
+    // Recalculate occupancy data
+    for (int z = 0; z < brickDepth; ++z) {
+        for (int y = 0; y < brickHeight; ++y) {
+            for (int x = 0; x < brickWidth; ++x) {
+                bool occupied = false;
+
+                for (int bz = 0; bz < brickSize && !occupied; ++bz) {
+                    for (int by = 0; by < brickSize && !occupied; ++by) {
+                        for (int bx = 0; bx < brickSize && !occupied; ++bx) {
+                            int voxelX = x * brickSize + bx;
+                            int voxelY = y * brickSize + by;
+                            int voxelZ = z * brickSize + bz;
+
+                            if (voxelX < width && voxelY < height &&
+                                voxelZ < depth) {
+                                int index = (voxelZ * height * width +
+                                             voxelY * width + voxelX);
+                                if (voxelData[index] > 0.003f) { // 1/255
+                                    occupied = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                occupancyData[z * brickHeight * brickWidth + y * brickWidth +
+                              x] = occupied ? 255 : 0;
+            }
+        }
+    }
+
+    // Update the brick texture
+    if (brickTextureHandle.idx != bgfx::kInvalidHandle) {
+        bgfx::destroy(brickTextureHandle); // Destroy old brick texture
+    }
+    const bgfx::Memory* occupancyMem = bgfx::makeRef(
+        occupancyData.data(), brickWidth * brickHeight * brickDepth);
+    brickTextureHandle = bgfx::createTexture3D(
+        brickWidth, brickHeight, brickDepth, false, bgfx::TextureFormat::R8,
+        BGFX_TEXTURE_COMPUTE_WRITE | BGFX_SAMPLER_UVW_CLAMP, nullptr);
+    bgfx::updateTexture3D(brickTextureHandle, 0, 0, 0, 0, brickWidth,
+                          brickHeight, brickDepth, occupancyMem);
 }
 
 void VoxelManager::raycastSetVoxel(const glm::vec2& mousePos,

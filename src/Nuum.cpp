@@ -110,6 +110,8 @@ void Nuum::RenderViewport() {
     bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
     bgfx::setTexture(1, voxelManager.getVoxelTextureUniform(),
                      voxelManager.getTextureHandle());
+    bgfx::setTexture(2, voxelManager.getBrickVoxelTextureUniform(),
+                     voxelManager.getBrickTextureHandle());
     bgfx::dispatch(0, computeProgram, viewportSize.x * 1.2f,
                    viewportSize.y * 1.2f, 1);
 }
@@ -418,7 +420,7 @@ int Nuum::Init(int argc, char** argv) {
     viewport = ImGui::GetMainViewport();
 
     paletteManager.Init();
-    voxelManager.Init(16, 16, 16, &paletteManager);
+    voxelManager.Init(64, 64, 64, &paletteManager);
 
     SDL_Window* serializerWindow = nullptr;
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD

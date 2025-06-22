@@ -108,7 +108,7 @@ void PaletteManager::UpdateColorData() {
     bgfx::update(paletteBuffer, 0,
                  bgfx::makeRef(currentPalette.data(),
                             currentPalette.size() * sizeof(glm::vec4)));
-    bgfx::setBuffer(2, paletteBuffer, bgfx::Access::Read);
+    bgfx::setBuffer(3, paletteBuffer, bgfx::Access::Read);
 }
 
 void PaletteManager::AddDefualtPalette() {

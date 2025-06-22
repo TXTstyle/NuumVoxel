@@ -2,9 +2,10 @@ $ input a_texcoord0
 
 #include <bgfx_compute.sh>
 
-IMAGE2D_WO ( u_outputImage, rgba8, 0 ) ; // output image at binding 0
-SAMPLER3D(s_voxelTexture, 1); // 3D texture at binding 1
-BUFFER_RO(paletteBuffer, vec4, 2); // palette buffer at binding 2
+IMAGE2D_WO ( u_outputImage, rgba8, 0 ) ;
+SAMPLER3D(s_voxelTexture, 1);
+SAMPLER3D(s_brickVoxelTexture, 2);
+BUFFER_RO(paletteBuffer, vec4, 3);
 
 uniform vec4 u_camPos; // camera position
 uniform mat3 u_camMat; // inverse view matrix
@@ -26,11 +27,14 @@ void main() {
         return;
 
     vec3 camPos = u_camPos.xyz;
+    const float brickSize = 8.0;
 
     // Volume bounds and grid size from uniforms
     vec3 gridSize = u_gridSize.xyz; // voxel grid size
-    vec3 u_volumeMin = vec3(-1.0, 0.0, -1.0) * gridSize * 0.0625 * u_gridSize.w; // volume min bounds
-    vec3 u_volumeMax = vec3(1.0, 2.0, 1.0) * gridSize * 0.0625 * u_gridSize.w; // volume max bounds
+    ivec3 brickGridSize = ivec3(gridSize / brickSize); // brick grid size
+
+    vec3 u_volumeMin = vec3(-1.0, 0.0, -1.0) * gridSize * 0.0625; // volume min bounds
+    vec3 u_volumeMax = vec3(1.0, 2.0, 1.0) * gridSize * 0.0625; // volume max bounds
 
     // Calculate screen coordinates and ray direction
     float fov = 45.0; // Field of view
@@ -88,13 +92,6 @@ void main() {
 
     vec3 tMax = abs(safeDiv(voxelBoundary - pos, rayDir));
 
-    // Debug visualization
-    #if 0
-    // Show ray entry points (useful for debugging)
-    imageStore(u_outputImage, pixelCoords, vec4(normalize(pos - u_volumeMin) * 0.5 + 0.5, 1.0));
-    return;
-    #endif
-
     vec3 hitNormal = vec3(0.0);
     float eps = 1e-5;
     if (abs(tmin - t0s.x) < eps) hitNormal.x = 1.0;
@@ -103,15 +100,66 @@ void main() {
     if (abs(tmin - t1s.y) < eps) hitNormal.y = -1.0;
     if (abs(tmin - t0s.z) < eps) hitNormal.z = 1.0;
     if (abs(tmin - t1s.z) < eps) hitNormal.z = -1.0;
+
     // Ray marching through the grid
-    const int maxSteps = 256;
+    const int maxSteps = 96;
     for (int i = 0; i < maxSteps; ++i)
     {
         // Check if current voxel is inside the grid
         if (any(lessThan(voxel, ivec3(0))) || any(greaterThanEqual(voxel, ivec3(gridSize))))
             break;
 
-        // Sample voxel data
+        // Check if brick is empty
+        ivec3 brickCoord = voxel / int(brickSize);
+        vec3 brickTexCoord = (vec3(brickCoord) + 0.5) / vec3(brickGridSize);
+        float brickValue = texture3D(s_brickVoxelTexture, brickTexCoord).r;
+
+        if (brickValue < 0.5) {
+            // Calculate which brick we're in
+            ivec3 currentBrick = voxel / int(brickSize);
+
+            // Calculate the boundaries of the current brick
+            ivec3 brickMin = currentBrick * int(brickSize);
+            ivec3 brickMax = brickMin + int(brickSize);
+
+            // Calculate intersection times with brick boundaries
+            vec3 brickMinWorld = u_volumeMin + vec3(brickMin) * voxelSize;
+            vec3 brickMaxWorld = u_volumeMin + vec3(brickMax) * voxelSize;
+
+            // Find the exit point from the current brick
+            vec3 tBrickMin = safeDiv(brickMinWorld - pos, rayDir);
+            vec3 tBrickMax = safeDiv(brickMaxWorld - pos, rayDir);
+
+            // Get the minimum positive t value for exiting the brick
+            vec3 tBrickExit = max(tBrickMin, tBrickMax);
+            float tExit = min(tBrickExit.x, min(tBrickExit.y, tBrickExit.z));
+
+            // Advance to the exit point
+            pos += rayDir * (tExit + epsilon);
+
+            // Recalculate voxel position and DDA parameters
+            voxel = ivec3(floor((pos - u_volumeMin) / voxelSize));
+
+            // Recalculate tMax values for the new position
+            for (int j = 0; j < 3; j++) {
+                voxelBoundary[j] = u_volumeMin[j] + (rayDir[j] > 0.0 ?
+                        (voxel[j] + 1) * voxelSize[j] :
+                        voxel[j] * voxelSize[j]);
+            }
+            tMax = abs(safeDiv(voxelBoundary - pos, rayDir));
+
+            // Update hit normal based on which face we exited through
+            if (abs(tExit - tBrickExit.x) < epsilon) {
+                hitNormal = vec3(sign(rayDir.x), 0.0, 0.0);
+            } else if (abs(tExit - tBrickExit.y) < epsilon) {
+                hitNormal = vec3(0.0, sign(rayDir.y), 0.0);
+            } else {
+                hitNormal = vec3(0.0, 0.0, sign(rayDir.z));
+            }
+
+            continue;
+        }
+
         vec3 texCoord = (vec3(voxel) + vec3(0.5)) / gridSize;
         float voxelValue = texture3D(s_voxelTexture, texCoord);
 
