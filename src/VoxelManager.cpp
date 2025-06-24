@@ -4,11 +4,13 @@
 #include "glm/fwd.hpp"
 #include "glm/geometric.hpp"
 #include "glm/vector_relational.hpp"
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 #include <iostream>
+#include <optional>
 #include <vector>
 #include <bx/bx.h>
 
@@ -160,11 +162,9 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z, float value) {
                     int voxelY = brickY * brickSize + by;
                     int voxelZ = brickZ * brickSize + bz;
 
-                    if (voxelX < width && voxelY < height &&
-                        voxelZ < depth) {
+                    if (voxelX < width && voxelY < height && voxelZ < depth) {
                         int index =
-                            (voxelZ * height * width + voxelY * width +
-                             voxelX);
+                            (voxelZ * height * width + voxelY * width + voxelX);
                         if (voxelData[index] > 0.003f) {
                             return; // Still occupied
                         }
@@ -179,6 +179,175 @@ void VoxelManager::setVoxel(uint32_t x, uint32_t y, uint32_t z, float value) {
         bgfx::updateTexture3D(brickTextureHandle, 0, brickX, brickY, brickZ, 1,
                               1, 1, occupancyUpdateMem);
     }
+}
+
+void VoxelManager::setVoxelAABB(const std::vector<float> data,
+                                const glm::ivec3& aabbMin,
+                                const glm::ivec3& aabbMax) {
+    if (data.size() != (aabbMax.x - aabbMin.x) * (aabbMax.y - aabbMin.y) *
+                           (aabbMax.z - aabbMin.z)) {
+        std::cerr << "Data size does not match AABB dimensions." << std::endl;
+        std::cerr << "Expected: "
+                  << (aabbMax.x - aabbMin.x) * (aabbMax.y - aabbMin.y) *
+                         (aabbMax.z - aabbMin.z)
+                  << ", Got: " << data.size() << std::endl;
+        return; // Size mismatch
+    }
+    // iterate through the AABB and set voxels
+    for (int x = aabbMin.x; x < aabbMax.x; x++) {
+        for (int y = aabbMin.y; y < aabbMax.y; y++) {
+            for (int z = aabbMin.z; z < aabbMax.z; z++) {
+                int index = z * width * height + y * width + x;
+                if (index < 0 || index >= voxelData.size()) {
+                    std::cerr << "Index out of bounds: " << index << std::endl;
+                    continue; // Out of bounds
+                }
+                uint32_t newVoxelIndex =
+                    (z - aabbMin.z) * (aabbMax.y - aabbMin.y) *
+                        (aabbMax.x - aabbMin.x) +
+                    (y - aabbMin.y) * (aabbMax.x - aabbMin.x) + (x - aabbMin.x);
+                if (voxelData[index] < 0.003f && voxelData[index] > -0.003f) {
+                    voxelData[index] = data[newVoxelIndex];
+                    // std::cout << "Setting voxel at (" << x << ", " << y << ", "
+                    //           << z << ") to " << data[newVoxelIndex]
+                    //           << std::endl;
+                } else if (data[newVoxelIndex] == -1.0f) {
+                    // If the color is -1.0f, remove the voxel
+                    voxelData[index] = 0.0f;
+                }
+            }
+        }
+    }
+
+    // Update the texture with the new voxel data
+    // Create a cutout of the voxel data for the specified AABB
+    int w = aabbMax.x - aabbMin.x;
+    int h = aabbMax.y - aabbMin.y;
+    int d = aabbMax.z - aabbMin.z;
+
+    std::cout << "Updating AABB: "
+              << "Min: (" << aabbMin.x << ", " << aabbMin.y << ", " << aabbMin.z
+              << "), Max: (" << aabbMax.x << ", " << aabbMax.y << ", "
+              << aabbMax.z << "), Size: (" << w << ", " << h << ", " << d << ")"
+              << std::endl;
+
+    // Basic bounds checking
+    assert(aabbMin.x >= 0 && aabbMax.x <= width);
+    assert(aabbMin.y >= 0 && aabbMax.y <= height);
+    assert(aabbMin.z >= 0 && aabbMax.z <= depth);
+
+    std::vector<float> cutout(w * h * d);
+
+    for (int z = 0; z < d; z++) {
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                size_t src_index = (x + aabbMin.x) + (y + aabbMin.y) * width +
+                                   (z + aabbMin.z) * width * height;
+                size_t dst_index = x + y * w + z * w * h;
+                cutout[dst_index] = voxelData[src_index];
+                std::cout << "Cutout voxel at (" << x << ", " << y << ", " << z
+                          << ") from source index " << src_index
+                          << " to destination index " << dst_index
+                          << " with value: " << cutout[dst_index] << std::endl;
+            }
+        }
+    }
+
+    // Update the 3D texture with the new cutout data
+    const bgfx::Memory* mem =
+        bgfx::makeRef(cutout.data(), cutout.size() * sizeof(float));
+    if (!mem) {
+        std::cerr << "Failed to allocate memory for voxel texture update."
+                  << std::endl;
+        return;
+    }
+    // std::cout << "Updating texture with cutout data of size: "
+    //           << cutout.size() * sizeof(float) << " bytes." << std::endl;
+    bgfx::updateTexture3D(textureHandle, 0, aabbMin.x, aabbMin.y, aabbMin.z, w,
+                          h, d, mem);
+
+    return;
+
+    // Update the occupancy data for the bricks affected by the AABB
+    glm::ivec3 aabbMinBrick = aabbMin / static_cast<int>(brickSize);
+    glm::ivec3 aabbMaxBrick =
+        (aabbMax + glm::ivec3(brickSize - 1)) / static_cast<int>(brickSize);
+
+    int aabbBrickWidth = aabbMaxBrick.x - aabbMinBrick.x;
+    int aabbBrickHeight = aabbMaxBrick.y - aabbMinBrick.y;
+    int aabbBrickDepth = aabbMaxBrick.z - aabbMinBrick.z;
+    std::vector<uint8_t> occupancySub(
+        aabbBrickWidth * aabbBrickHeight * aabbBrickDepth, 0);
+
+    std::cout << "Updating occupancy data for AABB: "
+              << "Min: (" << aabbMinBrick.x << ", " << aabbMinBrick.y << ", "
+              << aabbMinBrick.z << "), Max: (" << aabbMaxBrick.x << ", "
+              << aabbMaxBrick.y << ", " << aabbMaxBrick.z << "), Size: ("
+              << aabbBrickWidth << ", " << aabbBrickHeight << ", "
+              << aabbBrickDepth << ")" << std::endl;
+
+    for (int z = aabbMinBrick.z;
+         z < std::min(aabbMaxBrick.z, static_cast<int>(brickDepth)); ++z) {
+        for (int y = aabbMinBrick.y;
+             y < std::min(aabbMaxBrick.y, static_cast<int>(brickHeight)); ++y) {
+            for (int x = aabbMinBrick.x;
+                 x < std::min(aabbMaxBrick.x, static_cast<int>(brickWidth));
+                 ++x) {
+                if (x >= brickWidth || y >= brickHeight || z >= brickDepth) {
+                    std::cerr << "Brick index out of bounds: (" << x << ", "
+                              << y << ", " << z << ")" << std::endl;
+                    continue; // Out of bounds
+                }
+                int brickIndex =
+                    z * brickDepth * brickHeight + y * brickWidth + x;
+                bool occupied = false;
+
+                for (int bz = 0; bz < brickSize && !occupied; ++bz) {
+                    for (int by = 0; by < brickSize && !occupied; ++by) {
+                        for (int bx = 0; bx < brickSize && !occupied; ++bx) {
+                            int voxelX = x * brickSize + bx;
+                            int voxelY = y * brickSize + by;
+                            int voxelZ = z * brickSize + bz;
+
+                            if (voxelX >= width || voxelY >= height ||
+                                voxelZ >= depth)
+                                continue;
+
+                            int index = (voxelZ * height * width +
+                                         voxelY * width + voxelX);
+                            if (voxelData[index] > 0.003f) { // 1/255
+                                occupied = true;
+                            }
+                        }
+                    }
+                }
+
+                occupancyData[brickIndex] = occupied ? 255 : 0;
+
+                int localZ = z - aabbMinBrick.z;
+                int localY = y - aabbMinBrick.y;
+                int localX = x - aabbMinBrick.x;
+
+                occupancySub[localZ * aabbBrickHeight * aabbBrickWidth +
+                             localY * aabbBrickWidth + localX] =
+                    occupancyData[brickIndex];
+            }
+        }
+    }
+
+    // Update the brick texture with the new occupancy data
+    // For only the affected bricks
+    const bgfx::Memory* occupancyMem = bgfx::makeRef(
+        occupancySub.data(), occupancySub.size() * sizeof(uint8_t));
+    if (!occupancyMem) {
+        std::cerr << "Failed to allocate memory for occupancy texture update."
+                  << std::endl;
+        return;
+    }
+    // bgfx::updateTexture3D(brickTextureHandle, 0, aabbMinBrick.x,
+    // aabbMinBrick.y,
+    //                       aabbMinBrick.z, aabbBrickWidth, aabbBrickHeight,
+    //                       aabbBrickDepth, occupancyMem);
 }
 
 uint16_t VoxelManager::getVoxel(uint32_t x, uint32_t y, uint32_t z) const {
@@ -215,7 +384,6 @@ void VoxelManager::newVoxelData(std::vector<uint8_t>& newVoxelData, uint32_t w,
     const bgfx::Memory* mem =
         bgfx::makeRef(voxelData.data(), voxelData.size() * sizeof(float));
     bgfx::updateTexture3D(textureHandle, 0, 0, 0, 0, w, h, d, mem);
-
 }
 
 void VoxelManager::Resize(uint32_t newWidth, uint32_t newHeight,
@@ -305,12 +473,11 @@ void VoxelManager::Resize(uint32_t newWidth, uint32_t newHeight,
                           brickHeight, brickDepth, occupancyMem);
 }
 
-void VoxelManager::raycastSetVoxel(const glm::vec2& mousePos,
-                                   const glm::vec2& windowSize,
-                                   const glm::vec3& rayOrigin,
-                                   const glm::mat3& camMat,
-                                   const float voxelScale,
-                                   const bool deleteVoxel) {
+std::optional<HitInfo> VoxelManager::Raycast(const glm::vec2& mousePos,
+                                             const glm::vec2& windowSize,
+                                             const glm::vec3& rayOrigin,
+                                             const glm::mat3& camMat,
+                                             const float voxelScale) {
     // Set grid bounds and size
     glm::vec3 gridSize(this->width, this->height, this->depth);
     const glm::vec3 gridMin =
@@ -340,7 +507,7 @@ void VoxelManager::raycastSetVoxel(const glm::vec2& mousePos,
     float tmax = std::min(tbigger.x, std::min(tbigger.y, tbigger.z));
 
     if (tmax < tmin) {
-        return; // No intersection
+        return std::nullopt; // No intersection
     }
 
     const float epsilon = 0.00001f; // Small offset to avoid precision issues
@@ -376,28 +543,23 @@ void VoxelManager::raycastSetVoxel(const glm::vec2& mousePos,
 
         size_t index = voxel.z * width * height + voxel.y * width + voxel.x;
         if (voxelData[index] > 0.003f) {
-
             glm::ivec3 normal(0);
-            if (!deleteVoxel) {
-                if (lastAxis == 0)
-                    normal.x = -step.x;
-                else if (lastAxis == 1)
-                    normal.y = -step.y;
-                else if (lastAxis == 2)
-                    normal.z = -step.z;
-            }
+            if (lastAxis == 0)
+                normal.x = -step.x;
+            else if (lastAxis == 1)
+                normal.y = -step.y;
+            else if (lastAxis == 2)
+                normal.z = -step.z;
 
-            glm::ivec3 placeVoxel = voxel + normal;
+            float colIndex = static_cast<float>(
+                paletteManager->GetCurrentPalette().getSelectedIndex());
 
-            float colIndex =
-                deleteVoxel
-                    ? 0
-                    : static_cast<float>(paletteManager->GetCurrentPalette()
-                                             .getSelectedIndex());
-            // Place the voxel here
-            setVoxel(placeVoxel.x, placeVoxel.y, placeVoxel.z,
-                     colIndex / 255.0f);
-            return; // Hit a voxel, stop raycasting
+            HitInfo info;
+            info.pos = voxel;
+            info.normal = normal;
+            info.value = colIndex / 255.0f;
+            info.edge = false;
+            return std::make_optional(info);
         }
         lastVoxel = voxel;
 
@@ -419,12 +581,24 @@ void VoxelManager::raycastSetVoxel(const glm::vec2& mousePos,
     // Check if lastVoxel is valid and not out of bounds
     if (glm::all(glm::greaterThanEqual(lastVoxel, glm::ivec3(0))) &&
         glm::all(glm::lessThan(lastVoxel, glm::ivec3(width, height, depth)))) {
-        float colIndex =
-            deleteVoxel
-                ? 0
-                : static_cast<float>(
-                      paletteManager->GetCurrentPalette().getSelectedIndex());
-        // Place the voxel here
-        setVoxel(lastVoxel.x, lastVoxel.y, lastVoxel.z, colIndex / 255.0f);
+        float colIndex = static_cast<float>(
+            paletteManager->GetCurrentPalette().getSelectedIndex());
+
+        glm::ivec3 normal(0);
+        if (lastAxis == 0)
+            normal.x = -step.x;
+        else if (lastAxis == 1)
+            normal.y = -step.y;
+        else if (lastAxis == 2)
+            normal.z = -step.z;
+
+        HitInfo info;
+        info.normal = normal;
+        info.pos = lastVoxel;
+        info.value = colIndex / 255.0f;
+        info.edge = true;
+        return std::make_optional(info);
     }
+
+    return std::nullopt; // No hit found
 }

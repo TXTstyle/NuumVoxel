@@ -112,9 +112,9 @@ void main() {
         // Check if brick is empty
         ivec3 brickCoord = voxel / int(brickSize);
         vec3 brickTexCoord = (vec3(brickCoord) + 0.5) / vec3(brickGridSize);
-        float brickValue = texture3D(s_brickVoxelTexture, brickTexCoord).r;
+        float brickValue = 1.0; // texture3D(s_brickVoxelTexture, brickTexCoord).r;
 
-        if (brickValue < 0.5) {
+        if (brickValue < 0.5 && 0) {
             // Calculate which brick we're in
             ivec3 currentBrick = voxel / int(brickSize);
 

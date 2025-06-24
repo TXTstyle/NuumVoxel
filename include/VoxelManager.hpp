@@ -2,10 +2,19 @@
 
 #include "Palette.hpp"
 #include "PaletteManager.hpp"
+#include "glm/fwd.hpp"
 #include <cstdint>
 #include <bgfx/bgfx.h>
 #include <glm/glm.hpp>
+#include <optional>
 #include <vector>
+
+struct HitInfo {
+    glm::ivec3 pos;
+    glm::ivec3 normal;
+    float value;
+    bool edge;
+};
 
 class VoxelManager {
   private:
@@ -30,6 +39,8 @@ class VoxelManager {
               PaletteManager* paletteManager);
     void Destroy();
 
+    void setVoxelAABB(const std::vector<float> data, const glm::ivec3& aabbMin,
+                      const glm::ivec3& aabbMax);
     void setVoxel(uint32_t x, uint32_t y, uint32_t z, float value);
     uint16_t getVoxel(uint32_t x, uint32_t y, uint32_t z) const;
     const glm::vec4 getSize() const {
@@ -49,10 +60,11 @@ class VoxelManager {
     void newVoxelData(std::vector<uint8_t>& newVoxelData, uint32_t w,
                       uint32_t h, uint32_t d);
 
-    void raycastSetVoxel(const glm::vec2& mousePos, const glm::vec2& windowSize,
-                         const glm::vec3& rayOrigin, const glm::mat3& camMat,
-                         const float voxelScale = 0.0625f,
-                         const bool deleteVoxel = false);
+    std::optional<HitInfo> Raycast(const glm::vec2& mousePos,
+                                   const glm::vec2& windowSize,
+                                   const glm::vec3& rayOrigin,
+                                   const glm::mat3& camMat,
+                                   const float voxelScale = 0.0625f);
 
     inline bgfx::TextureHandle& getTextureHandle() { return textureHandle; }
 

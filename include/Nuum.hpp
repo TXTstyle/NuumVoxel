@@ -2,6 +2,7 @@
 
 #include "Camera.hpp"
 #include "Serializer.hpp"
+#include "ToolBox.hpp"
 #include "VoxelManager.hpp"
 #include "PaletteManager.hpp"
 #include "imgui.h"
@@ -21,10 +22,10 @@ class Nuum {
     bool running = true;
     bool runOnce = false;
 
-    bool openCameraWindow = true;
     bool openDebugWindow = true;
+    bool openCameraWindow = false;
     bool openPaletteWindow = true;
-    bool openSerializerWindow = true;
+    bool openToolBoxWindow = true;
 
     bgfx::UniformHandle u_camPos;
     bgfx::UniformHandle u_camMat;
@@ -42,6 +43,7 @@ class Nuum {
     VoxelManager voxelManager;
     Serializer serializer;
     PaletteManager paletteManager;
+    ToolBox toolBox;
 
     void InitBgfx(SDL_Window* window, SDL_SysWMinfo& wmInfo);
     void InitImGui(SDL_Window* window);

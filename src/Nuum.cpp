@@ -77,8 +77,7 @@ void Nuum::InitImGui(SDL_Window* window) {
 void Nuum::InitShaders() {
     outputTexture = bgfx::createTexture2D(
         uint16_t(width * 1.2f), uint16_t(height * 1.2f), false, 1,
-        bgfx::TextureFormat::RGBA8,
-        BGFX_TEXTURE_COMPUTE_WRITE);
+        bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_COMPUTE_WRITE);
 
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
     computeProgram = bgfx::createProgram(
@@ -133,8 +132,7 @@ void Nuum::RenderViewportWindow() {
         bgfx::destroy(outputTexture);
         outputTexture = bgfx::createTexture2D(
             uint16_t(viewportSize.x * 1.2f), uint16_t(viewportSize.y * 1.2f),
-            false, 1, bgfx::TextureFormat::RGBA8,
-            BGFX_TEXTURE_COMPUTE_WRITE);
+            false, 1, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_COMPUTE_WRITE);
     }
 
     ImGui::Image(outputTexture.idx, viewportSize);
@@ -229,7 +227,8 @@ void Nuum::RenderDockspace() {
             }
             if (ImGui::MenuItem("Save As NUPR", nullptr)) {
                 if (!runOnce) {
-                    int res = serializer.ExportToNUPR(voxelManager, paletteManager);
+                    int res =
+                        serializer.ExportToNUPR(voxelManager, paletteManager);
                     runOnce = true;
                 }
             }
@@ -240,7 +239,8 @@ void Nuum::RenderDockspace() {
                         window, ("Nuum - " + serializer.GetPath()).c_str());
             }
             if (ImGui::MenuItem("Open OBJ", "Ctrl+Shift+O")) {
-                int res = serializer.ImportFromObj(voxelManager, paletteManager);
+                int res =
+                    serializer.ImportFromObj(voxelManager, paletteManager);
                 if (res == 0)
                     SDL_SetWindowTitle(
                         window, ("Nuum - " + serializer.GetPath()).c_str());
@@ -259,6 +259,9 @@ void Nuum::RenderDockspace() {
             }
             if (ImGui::MenuItem("Palettes", "P", openPaletteWindow)) {
                 openPaletteWindow = !openPaletteWindow;
+            }
+            if (ImGui::MenuItem("ToolBox", "T", openToolBoxWindow)) {
+                openToolBoxWindow = !openToolBoxWindow;
             }
             ImGui::EndMenu();
         }
@@ -310,6 +313,10 @@ void Nuum::HandleEvents() {
                 openPaletteWindow = !openPaletteWindow;
                 continue;
             }
+            if (event.key.keysym.sym == SDLK_t) {
+                openToolBoxWindow = !openToolBoxWindow;
+                continue;
+            }
             if (event.key.keysym.sym == SDLK_s &&
                 SDL_GetModState() & KMOD_CTRL) {
                 if (!runOnce) {
@@ -336,7 +343,8 @@ void Nuum::HandleEvents() {
             if (event.key.keysym.sym == SDLK_o &&
                 SDL_GetModState() & (KMOD_CTRL | KMOD_SHIFT)) {
                 if (!runOnce) {
-                    int res = serializer.ImportFromObj(voxelManager, paletteManager);
+                    int res =
+                        serializer.ImportFromObj(voxelManager, paletteManager);
                     if (res == 0)
                         SDL_SetWindowTitle(
                             window, ("Nuum - " + serializer.GetPath()).c_str());
@@ -365,12 +373,22 @@ void Nuum::HandleEvents() {
                                      event.motion.yrel);
         }
         if (event.type == SDL_MOUSEBUTTONDOWN) {
-            if (event.button.button == SDL_BUTTON_LEFT) {
+            if (event.button.button == SDL_BUTTON_LEFT && !runOnce) {
                 bool hasShiftModifier = SDL_GetModState() & KMOD_SHIFT;
                 glm::vec2 windowSize(viewportSize.x, viewportSize.y);
-                voxelManager.raycastSetVoxel(
+
+                auto hit = voxelManager.Raycast(
                     viewportMousePos, windowSize, camera.GetPosition(),
-                    camera.GetViewMatrix(), gridSize[3], hasShiftModifier);
+                    camera.GetViewMatrix(), gridSize[3]);
+
+                if (hit.has_value()) {
+                    toolBox.useTool(hit.value(), voxelManager, paletteManager,
+                                    hasShiftModifier);
+                }
+                std::cout << "Mouse clicked at: "
+                          << viewportMousePos.x << ", " << viewportMousePos.y
+                          << std::endl;
+                runOnce = true;
             }
         }
         if (event.type == SDL_MOUSEWHEEL) {
@@ -421,6 +439,7 @@ int Nuum::Init(int argc, char** argv) {
 
     paletteManager.Init();
     voxelManager.Init(64, 64, 64, &paletteManager);
+    toolBox.Init();
 
     SDL_Window* serializerWindow = nullptr;
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
@@ -454,6 +473,7 @@ void Nuum::Run() {
         RenderDebugWindow();
         paletteManager.RenderWindow(&openPaletteWindow);
         serializer.RenderWindow();
+        toolBox.RenderWindow(&openToolBoxWindow);
 
         ImGui::Render();
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
@@ -475,6 +495,7 @@ void Nuum::Shutdown() {
     serializer.Destroy();
     voxelManager.Destroy();
     paletteManager.Destroy();
+    toolBox.Destroy();
     bgfx::destroy(u_camPos);
     bgfx::destroy(u_camMat);
     bgfx::destroy(u_gridSize);
