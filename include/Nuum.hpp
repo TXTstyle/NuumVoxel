@@ -31,13 +31,18 @@ class Nuum {
     bgfx::UniformHandle u_camMat;
     bgfx::UniformHandle u_gridSize;
 
-    bgfx::ProgramHandle computeProgram;
-    bgfx::TextureHandle outputTexture;
+    bgfx::ProgramHandle program;
+    bgfx::FrameBufferHandle frameBuffer;
+
+    bgfx::VertexLayout layout;
+    bgfx::VertexBufferHandle vertexBuffer;
+    bgfx::IndexBufferHandle indexBuffer;
 
     glm::vec4 gridSize = {16.0f, 16.0f, 16.0f, 1.0f};
     glm::vec2 viewportMousePos = {0.0f, 0.0f};
     bool isHoveringViewport;
     ImVec2 viewportSize = ImVec2(width * 0.5f, height * 0.5f);
+    float viewportAspectRatio = viewportSize.x / viewportSize.y;
 
     Camera camera;
     VoxelManager voxelManager;

@@ -9,6 +9,7 @@ private:
     std::vector<Palette> palettes;
     uint32_t currentPaletteIndex;
     int32_t paletteSize;
+    bool shouldUpdate = true;
 
     bgfx::DynamicVertexBufferHandle paletteBuffer;
     bgfx::VertexLayout paletteLayout;

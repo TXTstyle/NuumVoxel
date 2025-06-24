@@ -84,14 +84,8 @@ int ToolBox::useBrush(const HitInfo& hit, VoxelManager& voxelManager,
             }
         }
     }
-
-    std::vector<float> testData(2*2*2, 2.0f/255.0f);
-    glm::ivec3 testStart = glm::ivec3(60, 0, 60);
-    glm::ivec3 testEnd = glm::ivec3(62, 2, 62);
-
     // Set the voxels in the voxel manager
-    // voxelManager.setVoxelAABB(std::move(voxels), start, end);
-    voxelManager.setVoxelAABB(std::move(testData), testStart, testEnd);
+    voxelManager.setVoxelAABB(std::move(voxels), start, end);
 
     return 0;
 }

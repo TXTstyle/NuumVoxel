@@ -1,4 +1,6 @@
 #include "Camera.hpp"
+#include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/constants.hpp"
 
 #include <SDL_keycode.h>
@@ -29,7 +31,7 @@ void Camera::HandelMouseMotion(uint32_t motionSate, float xrel, float yrel) {
     if (motionSate & SDL_BUTTON(SDL_BUTTON_RIGHT) && hasNoModifiers) {
         rotation.x += yrel * 0.01f * mouseSensitivity;
         rotation.y += xrel * -0.01f * mouseSensitivity;
-        if (rotation.x > (glm::half_pi<float>()* 0.999f)) {
+        if (rotation.x > (glm::half_pi<float>() * 0.999f)) {
             rotation.x = glm::half_pi<float>() * 0.999f;
         } else if (rotation.x < -(glm::half_pi<float>() * 0.999f)) {
             rotation.x = -(glm::half_pi<float>() * 0.999f);
@@ -43,6 +45,11 @@ void Camera::HandelMouseMotion(uint32_t motionSate, float xrel, float yrel) {
     }
     if (motionSate & SDL_BUTTON(SDL_BUTTON_RIGHT) &&
         SDL_GetModState() & KMOD_SHIFT) {
+        // Get the camera's right and up vectors from the matrix
+        glm::vec3 camR =
+            glm::normalize(glm::vec3(camMat[0][0], camMat[1][0], camMat[2][0]));
+        glm::vec3 camU =
+            glm::normalize(glm::vec3(camMat[0][1], camMat[1][1], camMat[2][1]));
         glm::vec3 mouseDirWorld = camR * -xrel + camU * yrel;
         target += mouseDirWorld * 0.001f * radius;
         shouldUpdate = true;
@@ -55,14 +62,11 @@ void Camera::RenderDebugWindow(bool* open) {
     }
     ImGui::Begin("Cam debug info", open);
     ImGui::Text("CamPos: %.1f, %.1f, %.1f", camPos.x, camPos.y, camPos.z);
-    ImGui::Text("CamF: %.1f, %.1f, %.1f", camF.x, camF.y, camF.z);
-    ImGui::Text("CamR: %.1f, %.1f, %.1f", camR.x, camR.y, camR.z);
-    ImGui::Text("CamU: %.1f, %.1f, %.1f", camU.x, camU.y, camU.z);
     ImGui::Text("Rotation: %.3f, %.3f", rotation.x, rotation.y);
     ImGui::End();
 }
 
-void Camera::Update() {
+void Camera::Update(float aspectRatio) {
     if (!shouldUpdate) {
         return;
     }
@@ -75,8 +79,8 @@ void Camera::Update() {
     camPos.y = target.y + radius * sin(pitch);
     camPos.z = target.z + radius * cos(pitch) * cos(yaw);
 
-    camF = glm::normalize(target - camPos);
-    camR = glm::normalize(glm::cross(camF, glm::vec3(0.0f, 1.0f, 0.0f)));
-    camU = glm::cross(camR, camF);
-    camMat = glm::mat3(camR, camU, -camF);
+    camMat = glm::lookAt(camPos, target, glm::vec3(0.0f, 1.0f, 0.0f));
+    projMat = glm::perspective(glm::radians(fov), aspectRatio, 0.01f, 100.0f);
+
+    invViewProj = glm::inverse(projMat * camMat);
 }

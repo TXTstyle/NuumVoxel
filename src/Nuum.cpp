@@ -4,22 +4,37 @@
 #include "bgfx/platform.h"
 #include "bgfx/defines.h"
 #include "bx/platform.h"
+#include "glm/fwd.hpp"
+#include "glm/matrix.hpp"
 #include "imgui.h"
 #include <SDL_syswm.h>
 #include <SDL_video.h>
 #include <iostream>
+#include "Vertex.hpp"
 
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_bgfx.h"
-#include "spirv/cs_ray.sc.bin.h"
+#include "spirv/vs_ray.sc.bin.h"
+#include "spirv/fs_ray.sc.bin.h"
 
 #if BX_PLATFORM_OSX
-#include "metal/cs_ray.sc.bin.h"
+#include "metal/vs_ray.sc.bin.h"
+#include "metal/fs_ray.sc.bin.h"
 #endif
 
 #if BX_PLATFORM_WINDOWS
-#include "dx11/cs_ray.sc.bin.h"
+#include "dx11/vs_ray.sc.bin.h"
+#include "dx11/fs_ray.sc.bin.h"
 #endif
+
+static const ScreenVertex screenVertices[] = {
+    {{-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},  //
+    {{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},   //
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 1.0f}}, //
+    {{1.0f, -1.0f, 0.0f}, {1.0f, 1.0f}}};
+
+static const uint16_t screenIndices[] = {0, 1, 2, //
+                                         2, 1, 3};
 
 Nuum::Nuum() {}
 
@@ -50,7 +65,7 @@ void Nuum::InitBgfx(SDL_Window* window, SDL_SysWMinfo& wmInfo) {
 
     init.resolution.width = width;
     init.resolution.height = height;
-    init.resolution.reset = BGFX_RESET_VSYNC;
+    init.resolution.reset = BGFX_RESET_FLIP_AFTER_RENDER;
     bgfx::renderFrame();
     if (!bgfx::init(init)) {
         std::cerr << "Failed to initialize bgfx!\n";
@@ -75,44 +90,60 @@ void Nuum::InitImGui(SDL_Window* window) {
 }
 
 void Nuum::InitShaders() {
-    outputTexture = bgfx::createTexture2D(
-        uint16_t(width * 1.2f), uint16_t(height * 1.2f), false, 1,
-        bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_COMPUTE_WRITE);
+    frameBuffer =
+        bgfx::createFrameBuffer((u_int16_t)width, (u_int16_t)height,
+                                bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_RT);
 
 #if BX_PLATFORM_LINUX || BX_PLATFORM_BSD
-    computeProgram = bgfx::createProgram(
-        bgfx::createShader(bgfx::makeRef(cs_ray_spv, sizeof(cs_ray_spv))),
+    program = bgfx::createProgram(
+        bgfx::createShader(bgfx::makeRef(vs_ray_spv, sizeof(vs_ray_spv))),
+        bgfx::createShader(bgfx::makeRef(fs_ray_spv, sizeof(fs_ray_spv))),
         true);
 #elif BX_PLATFORM_WINDOWS
     computeProgram = bgfx::createProgram(
-        bgfx::createShader(bgfx::makeRef(cs_ray_dx11, sizeof(cs_ray_dx11))),
+        bgfx::createShader(bgfx::makeRef(vs_ray_dx11, sizeof(vs_ray_dx11))),
+        bgfx::createShader(bgfx::makeRef(fs_ray_dx11, sizeof(fs_ray_dx11))),
         true);
 #elif BX_PLATFORM_OSX
     computeProgram = bgfx::createProgram(
-        bgfx::createShader(bgfx::makeRef(cs_ray_mtl, sizeof(cs_ray_mtl))),
+        bgfx::createShader(bgfx::makeRef(vs_ray_mtl, sizeof(vs_ray_mtl))),
+        bgfx::createShader(bgfx::makeRef(fs_ray_mtl, sizeof(fs_ray_mtl))),
         true);
 #endif
 
     u_camPos = bgfx::createUniform("u_camPos", bgfx::UniformType::Vec4);
-    u_camMat = bgfx::createUniform("u_camMat", bgfx::UniformType::Mat3);
+    u_camMat = bgfx::createUniform("u_camMat", bgfx::UniformType::Mat4);
     u_gridSize = bgfx::createUniform("u_gridSize", bgfx::UniformType::Vec4);
+
+    layout.begin()
+        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .end();
+
+    vertexBuffer = bgfx::createVertexBuffer(
+        bgfx::makeRef(screenVertices, sizeof(screenVertices)), layout);
+    indexBuffer = bgfx::createIndexBuffer(
+        bgfx::makeRef(screenIndices, sizeof(screenIndices)));
 }
 
 void Nuum::RenderViewport() {
-    bgfx::setUniform(u_camMat, &glm::transpose(camera.GetViewMatrix())[0][0],
-                     1);
+    bgfx::setViewRect(0, 0, 0, bgfx::BackbufferRatio::Equal);
+    bgfx::setViewFrameBuffer(0, frameBuffer);
+    bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff, 1.0f,
+                       0);
+    bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA);
+    bgfx::setVertexBuffer(0, vertexBuffer);
+    bgfx::setIndexBuffer(indexBuffer);
     auto voxelSize = voxelManager.getSize();
     glm::vec4 grid =
         glm::vec4(voxelSize.x, voxelSize.y, voxelSize.z, gridSize[3]);
     bgfx::setUniform(u_gridSize, &grid[0], 1);
     bgfx::setUniform(u_camPos, &glm::vec4(camera.GetPosition(), 1.0f)[0]);
-    bgfx::setImage(0, outputTexture, 0, bgfx::Access::Write);
-    bgfx::setTexture(1, voxelManager.getVoxelTextureUniform(),
+    glm::mat4 invMat = glm::transpose(camera.GetInvViewProj());
+    bgfx::setUniform(u_camMat, &invMat[0][0], 1);
+    bgfx::setTexture(0, voxelManager.getVoxelTextureUniform(),
                      voxelManager.getTextureHandle());
-    bgfx::setTexture(2, voxelManager.getBrickVoxelTextureUniform(),
-                     voxelManager.getBrickTextureHandle());
-    bgfx::dispatch(0, computeProgram, viewportSize.x * 1.2f,
-                   viewportSize.y * 1.2f, 1);
+    bgfx::submit(0, program);
 }
 
 void Nuum::RenderViewportWindow() {
@@ -129,13 +160,14 @@ void Nuum::RenderViewportWindow() {
          viewportSize.y != newViewportSize.y) &&
         !ImGui::IsMouseDown(0)) {
         viewportSize = newViewportSize;
-        bgfx::destroy(outputTexture);
-        outputTexture = bgfx::createTexture2D(
-            uint16_t(viewportSize.x * 1.2f), uint16_t(viewportSize.y * 1.2f),
-            false, 1, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_COMPUTE_WRITE);
+        bgfx::destroy(frameBuffer);
+        frameBuffer = bgfx::createFrameBuffer(
+            (u_int16_t)viewportSize.x, (u_int16_t)viewportSize.y,
+            bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_RT);
+        viewportAspectRatio = viewportSize.x / viewportSize.y;
     }
 
-    ImGui::Image(outputTexture.idx, viewportSize);
+    ImGui::Image(bgfx::getTexture(frameBuffer).idx, viewportSize);
 
     isHoveringViewport =
         ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
@@ -165,6 +197,9 @@ void Nuum::RenderDebugWindow() {
         voxelManager.Resize(gridSize[0], gridSize[1], gridSize[2]);
     }
     ImGui::SliderFloat("Voxel Size", &gridSize[3], 0.1f, 10.0f);
+    if (ImGui::InputFloat("FOV", &camera.GetFov())) {
+        camera.SetUpdateState(true);
+    }
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
     ImGui::Text("Mouse Position: %.1f, %.1f", io->MousePos.x, io->MousePos.y);
     ImGui::Text("Viewport Mouse Position: %.1f, %.1f", viewportMousePos.x,
@@ -375,19 +410,17 @@ void Nuum::HandleEvents() {
         if (event.type == SDL_MOUSEBUTTONDOWN) {
             if (event.button.button == SDL_BUTTON_LEFT && !runOnce) {
                 bool hasShiftModifier = SDL_GetModState() & KMOD_SHIFT;
-                glm::vec2 windowSize(viewportSize.x, viewportSize.y);
+                glm::vec2 viewport =
+                    glm::vec2(viewportSize.x, viewportSize.y);
 
                 auto hit = voxelManager.Raycast(
-                    viewportMousePos, windowSize, camera.GetPosition(),
-                    camera.GetViewMatrix(), gridSize[3]);
+                    viewportMousePos / viewport, camera.GetPosition(),
+                    camera.GetInvViewProj(), gridSize[3]);
 
                 if (hit.has_value()) {
                     toolBox.useTool(hit.value(), voxelManager, paletteManager,
                                     hasShiftModifier);
                 }
-                std::cout << "Mouse clicked at: "
-                          << viewportMousePos.x << ", " << viewportMousePos.y
-                          << std::endl;
                 runOnce = true;
             }
         }
@@ -412,6 +445,7 @@ int Nuum::Init(int argc, char** argv) {
     SDL_GetDesktopDisplayMode(0, &displayMode);
     width = width > (displayMode.w * 0.6f) ? displayMode.w * 0.6f : width;
     height = height > (displayMode.h * 0.6f) ? displayMode.h * 0.6f : height;
+    viewportAspectRatio = viewportSize.x / viewportSize.y;
     SDL_Window* window =
         SDL_CreateWindow("Nuum", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                          width, height, SDL_WINDOW_RESIZABLE);
@@ -479,7 +513,7 @@ void Nuum::Run() {
         ImGui_Implbgfx_RenderDrawLists(ImGui::GetDrawData());
 
         // Update
-        camera.Update();
+        camera.Update(viewportAspectRatio);
 
         // Render
         bgfx::touch(0);
@@ -499,8 +533,10 @@ void Nuum::Shutdown() {
     bgfx::destroy(u_camPos);
     bgfx::destroy(u_camMat);
     bgfx::destroy(u_gridSize);
-    bgfx::destroy(computeProgram);
-    bgfx::destroy(outputTexture);
+    bgfx::destroy(program);
+    bgfx::destroy(vertexBuffer);
+    bgfx::destroy(indexBuffer);
+    bgfx::destroy(frameBuffer);
     ImGui_ImplSDL2_Shutdown();
     ImGui_Implbgfx_Shutdown();
     ImGui::DestroyContext();
