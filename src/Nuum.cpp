@@ -446,7 +446,7 @@ int Nuum::Init(int argc, char** argv) {
     width = width > (displayMode.w * 0.6f) ? displayMode.w * 0.6f : width;
     height = height > (displayMode.h * 0.6f) ? displayMode.h * 0.6f : height;
     viewportAspectRatio = viewportSize.x / viewportSize.y;
-    SDL_Window* window =
+    window =
         SDL_CreateWindow("Nuum", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                          width, height, SDL_WINDOW_RESIZABLE);
 
